@@ -78,7 +78,7 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 		    ## Convert sam file to fastq reads
 		    sam2fastq.pl -i reads/${sample}_ex10k.sam \
 		        -o reads/${sample}_ex10k >> reads/${sample}_ex10k.log 2>&1
-      '
+		'
 
 
 ####Known Issues:
