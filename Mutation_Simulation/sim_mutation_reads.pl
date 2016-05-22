@@ -206,8 +206,8 @@ print STDOUT "$HEADER##" . (scalar localtime()) . "\n";
 print STDOUT "##Tag(SAM): replaced reads\n";
 print STDOUT "##Tag(MUT): simulated loci\n";
 print STDOUT "#Tag\tChrom\tPosition\tSamples\tRef\tMut\tSimulated_depths\n";
-my $rand_index = 0;
-while ($rand_index < $options{rand_size})
+my $rand_index = 1;
+while ($rand_index <= $options{rand_size})
 {
     print STDERR "\r>> Start generating random mutations .. $rand_index \/ " . $options{rand_size};
 
