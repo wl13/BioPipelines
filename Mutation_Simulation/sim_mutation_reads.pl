@@ -205,7 +205,7 @@ print STDERR ">> Start generating simulated reads ... ";
 print STDOUT "$HEADER##" . (scalar localtime()) . "\n";
 print STDOUT "##Tag(SAM): replaced reads\n";
 print STDOUT "##Tag(MUT): simulated loci\n";
-print STDOUT "#Tag\tChrom\tPosition\tSamples\tRef\tMut\tSimulated_depths\n";
+print STDOUT "#Tag\tChrom\tStart\tEnd\tSamples\tRef\tMut\tSimulated_depths(Total_depth:Sampled_depth:Actually_replaced_depth)\n";
 my $rand_index = 1;
 while ($rand_index <= $options{rand_size})
 {
@@ -241,7 +241,7 @@ while ($rand_index <= $options{rand_size})
         my $mut_samples = join ";", @sim_samples;
         my $mut_depths  = join ";", @sim_depths;
         
-        print STDOUT "MUT\t$chrom\t$pos\t$mut_samples\t$ref_base\t$mut_base\t$mut_depths\n";
+        print STDOUT "MUT\t$chrom\t$pos\t$pos\t$mut_samples\t$ref_base\t$mut_base\t$mut_depths\n";
     }
 }
 print STDERR "\tdone!\n";
@@ -383,7 +383,7 @@ sub gen_mutated_reads
             
             $replaced_count ++;
             
-            print STDOUT "SAM:$mut_sample|$mut_chrom:$mut_pos\t$mut_read\n";
+            print STDOUT "SAM:$mut_sample:$mut_region\t$mut_read\n";
         }
     }
     
