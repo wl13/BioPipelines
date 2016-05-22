@@ -59,7 +59,7 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 
 		## Extract synthetic nucleotide changes
 		awk 'BEGIN{OFS="\t"} /^\#Tag/ || $1 == "MUT" {if(/\#Tag/){$2 = "#Chrom";} print;}' \
-		    20_samples.simulated.dat | cut -f 2- > 20_samples.simulated.vars.csv
+		    20_samples.simulated.dat | cut -f 2- | sort -k1,1 -k2,2n > 20_samples.simulated.vars.csv
 		
 		## Extract reads carry the synthetic mutations
 		awk '$1 ~ /SAM:/' 20_samples.simulated.dat | cut -f 2- > 20_samples.simulated.reads.sam
