@@ -43,15 +43,19 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 		## Random select a genome position with a read depth x, then replace
 		## y reads with a random picked nucleotide (different from the original
 		## one), the y was determined according to the empirical distribution.
-		## Reads with following situations were not counted in x (FLAG 3844)
-		##    read unmapped
-		##    not primary alignment
-		##    read fails platform/vendor quality checks
-		##    read is PCR or optical duplicate
-		##    supplementary alignment
+		## Generate reads with synthesized mutations, only use read:
+		##    1) mapped in proper pair (-f 2);
+		##    2) mapping quality >= 20 (-q 20);
+		##    3) NOT belong to (-F 3852):
+		##      read unmapped
+		##      mate unmapped
+		##      not primary alignment
+		##      read fails platform/vendor quality checks
+		##      read is PCR or optical duplicate
+		##      supplementary alignment
 		sim_mutation_reads.pl --fasta reference.fasta \
 		    --depth 20_samples.hc.depths.csv \
-		    --bams ${BAM_FILES} --random-size 1000 --samtools "-F 3844" \
+		    --bams ${BAM_FILES} --random-size 1000 --samtools "-q 20 -f 2 -F 3852" \
 		    > 20_samples.simulated.dat
 
 
@@ -81,6 +85,5 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 		'
 
 
-####Known Issues:
-1) A certain portion of synthetic mutations could appear upon a indel region in the sequenced sample, those "mutations" could appear in a different position nearby.
+
 
