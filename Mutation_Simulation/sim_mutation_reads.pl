@@ -5,8 +5,8 @@
 #
 #   Author: Nowind
 #   Created: 2012-02-21
-#   Updated: 2016-05-22
-#   Version: 2.0.0
+#   Updated: 2016-05-23
+#   Version: 2.0.1
 #
 #   Change logs:
 #   Version 1.0.0 15/01/21: The initial version.
@@ -16,7 +16,8 @@
 #                                   add check for whether mutation is successfully generated;
 #                                   now the number of simulated mutations were weighted according
 #                                   to the chromosome length.
-
+#   Version 2.0.1 16/05/23: Update: stop generate mutations on reads with indels or soft-clips;
+#                                   rearrange output infos.
 
 
 
@@ -35,7 +36,7 @@ use MyPerl::FileIO qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '2.0.0';
+my $VERSION = '2.0.1';
 my $HEADER  = "##$CMDLINE\n##Version: $VERSION\n";
 
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
@@ -205,7 +206,7 @@ print STDERR ">> Start generating simulated reads ... ";
 print STDOUT "$HEADER##" . (scalar localtime()) . "\n";
 print STDOUT "##Tag(SAM): replaced reads\n";
 print STDOUT "##Tag(MUT): simulated loci\n";
-print STDOUT "#Tag\tChrom\tStart\tEnd\tSamples\tRef\tMut\tSimulated_depths(Total_depth:Sampled_depth:Actually_replaced_depth)\n";
+print STDOUT "#Tag\tChrom\tStart\tEnd\tSamples\tRef\tMut\tSimulated_depths(Non_Replaced,Replaced)\n";
 my $rand_index = 1;
 while ($rand_index <= $options{rand_size})
 {
@@ -219,7 +220,6 @@ while ($rand_index <= $options{rand_size})
     my $mut_base   = $alt_bases[int(rand(3))];
 
     my @samples_selected = rand_set(set => $options{bam_files}, min => 1, max => $options{max_shared});
-       @samples_selected = sort @samples_selected;
        
     my @sim_samples = ();
     my @sim_depths  = ();
@@ -238,8 +238,14 @@ while ($rand_index <= $options{rand_size})
     if (@sim_samples >= 1) {
         $rand_index ++;
         
-        my $mut_samples = join ";", @sim_samples;
-        my $mut_depths  = join ";", @sim_depths;
+        
+        ## sort output sampless
+        my @sorted_index   = sort {$sim_samples[$a] cmp $sim_samples[$b]} (0..$#sim_samples);
+        my @sorted_samples = @sim_samples[@sorted_index];
+        my @sorted_depths  = @sim_depths[@sorted_index];
+        
+        my $mut_samples = join ";", @sorted_samples;
+        my $mut_depths  = join ";", @sorted_depths;
         
         print STDOUT "MUT\t$chrom\t$pos\t$pos\t$mut_samples\t$ref_base\t$mut_base\t$mut_depths\n";
     }
@@ -364,14 +370,11 @@ sub gen_mutated_reads
         my ($QNAME, $FLAG, $RNAME, $POS, $MAPQ, $CIGAR, 
             $MRNM, $NPOS, $TLEN, $SEQ, $QUAL, @OPT) = (split /\s+/, $reads[$i]);
         
-        ##
-        ## reads contain indels may cause the replace position exceeds the read length,
-        ## such case is simply skipped
-        ##
+        ## reads contain indels or soft-clips may cause a failure in map original
+        ## replace positions, those reads were not used in generate synthesized mutations
+        next if ($CIGAR =~ /(I|D|S)/);
+        
         my $read_mut_pos = $mut_pos - $POS + 1;
-        if ($read_mut_pos > 100) {
-            next;
-        }
         
         my $read_base = uc(substr($SEQ, $read_mut_pos-1, 1));
         my $mut_read  = $reads[$i];
@@ -389,5 +392,6 @@ sub gen_mutated_reads
     
     return -2 if $replaced_count < $options{min_depth};
     
-    return "$mut_sample\t$total_depth:$mut_depth:$replaced_count";
+    my $non_replaced_depth = $total_depth - $replaced_count;
+    return "$mut_sample\t$non_replaced_depth,$replaced_count";
 }
