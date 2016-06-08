@@ -1,4 +1,4 @@
-###Pipelines to detect "mutations" (rare variants) among a cohort of samples
+###Pipelines to detect "mutations" (rare variants) among a cohort of samples use mapping results
 
 
 Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR duplicates, etc.)
@@ -38,7 +38,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 ####Step2: Count accurate allele depths for each locus and each sample
 
 
-* Use VarScan (version 2.3.6, http://dkoboldt.github.io/varscan/) and samtools (version 0.1.19, https://github.com/samtools/samtools) to generate read counts for each SNP
+* Use VarScan (version 2.3.6, http://dkoboldt.github.io/varscan/) and samtools (version 0.1.19, https://github.com/samtools/samtools) to generate read counts for each **SNV site**
 
 		find bam_files/ -name "*.bam" -print | sed 's/.bam$//' | xargs -n 1 -P 6 -I PREFIX \
 		    sh -c '
@@ -85,7 +85,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 		    > samples.fq3.snp.vcf.gz && tabix -p vcf samples.fq3.snp.vcf.gz
 
 
-* Run HaplotypeCaller in multiple-sample calling mode around indels to generate more accurate AD values for each sample
+* Run HaplotypeCaller in **multiple-sample calling** mode around **indels** to generate more accurate AD values for each sample
 
 		Samples=`find bam_files/ -name "*.bam" -print | xargs -I BAM_FILE echo -n "-I BAM_FILE "`
 		java -jar GenomeAnalysisTK-3.5/GenomeAnalysisTK.jar \
@@ -98,102 +98,102 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 
 
-#####Step3: Screen out candidate mutations
+####Step3: Screen out candidate mutations
+
+* Use detect_mutations.pl to screen out candidate **point mutations**
+
+		detect_mutations.pl -v samples.fq3.snp.vcf.gz --max-cmp-depth 2 --max-cmp-total 3 \
+		    --max-cmp-miss 5 --min-supp-depth 5 --min-supp-plus 1 --min-supp-minus 1 \
+		    --mask-only LowDepth -g samples.group.txt | \
+		    vcf-annotate -f c=3,150 --fill-type > samples.fq3.snp.mut.c2t3d5m5.vcf
 
 
-## filtering point mutations
-detect_mutations.pl -v samples.fq3.snp.vcf.gz --max-cmp-depth 2 --max-cmp-total 3 \
-    --max-cmp-miss 5 --min-supp-depth 5 --min-supp-plus 1 --min-supp-minus 1 \
-    --mask-only LowDepth -g samples.group.txt | \
-    vcf-annotate -f c=3,150 --fill-type > samples.fq3.snp.mut.c2t3d5m5.vcf
+* Use detect_mutations.pl to screen out candidate **indel mutations**
 
-
-## filtering indel mutations
-vcf_process.pl --vcf samples.fq3.indel.hc_multi.vcf.gz --quality 30 --var-type indel | \
-    awk '/\#/ || ($9 ~ /AD/)' | \
-    detect_mutations.pl -v - --max-cmp-total 3 --max-cmp-depth 2 --min-supp-depth 5 \
-    --max-cmp-miss 5 --mask-only LowDepth -g samples.group.txt | \
-    vcf-annotate -f c=2,150 --fill-type > samples.fq3.indel.mut.c2t3d5m5.vcf
-
-
-##
-## Step4: rerun all Step1~3 with one or more different callers, preferentially those
-## implemented with a different algorithm
-##
+		vcf_process.pl --vcf samples.fq3.indel.hc_multi.vcf.gz --quality 30 --var-type indel | \
+		    awk '/\#/ || ($9 ~ /AD/)' | \
+		    detect_mutations.pl -v - --max-cmp-total 3 --max-cmp-depth 2 --min-supp-depth 5 \
+		    --max-cmp-miss 5 --mask-only LowDepth -g samples.group.txt | \
+		    vcf-annotate -f c=2,150 --fill-type > samples.fq3.indel.mut.c2t3d5m5.vcf
 
 
 
-##
-## Step5: combine results with different callers
-##
-
-vcf_process.pl --vcf caller1.mut.vcf --secondary-vcf caller2.mut.vcf \
-    --combine-rows 0 1 --compare-rows 2 3 4 --primary-tag CALLER1 --secondary-tag CALLER2 \
-    --intersect-tag CALLED_BOTH > mut.combined.vcf
+####Step4: Rerun Step1~3 with another variant sets from different callers or even mappers, preferentially those implemented with a different algorithm
 
 
 
-##
-## Step6: generate alignments and figures for manually inspections
-##
+####Step5: Collect all cadidate mutations from different mappers, callers or different parameters
 
-## local re-align reads to reference with another aligner like ClustalW2 (http://www.clustal.org/clustal2/)
-for record in `cat mut.vcf | perl -ne 'next if (/^\#/); my ($chrom, $pos, $sample) = (split /\s+/)[0,1,2,7];
-    if($sample =~ /\;/) {$sample = "Shared"} print "$sample;$chrom:$pos#$1\n";'`;
-do
-    sample=${record/;*}
-    mutation=${record/*;}
-    mut_base=${mutation/*\#}
-    mutation=${mutation/\#*}
-    chrom=${mutation/:*}
-    mut_pos=${mutation/*:}
+* Combine various results into a single vcf file use vcf_process.pl  
 
-    start_pos=`echo "${mut_pos}-200" | bc`
-    end_pos=`echo "${mut_pos}+200" | bc`
-
-    echo "${sample} ${chrom} ${mut_pos} ${mut_base}"
-    
-    if [[ -n alignments/${sample} ]]; then
-        mkdir -pv alignments/${sample}
-    fi
-    
-    echo -e "${chrom} ${start_pos} ${end_pos}\n${chrom} ${start_pos} ${mut_pos}\n${chrom} ${mut_pos} ${end_pos}\n" | \
-        fasta_process.pl --rows 0 1 2 --subset 1 2 --query - \
-        --fasta reference.fasta > alignments/${sample}/${chrom}_${mut_pos}.fa
-    
-    for bam_file in `ls bam_files/*.bam`;
-    do
-        sample=`basename ${bam_file} | cut -d"." -f1`
-        samtools view -X -F 3844 ${bam_file} ${chrom}:${mut_pos}-${mut_pos} | \
-            awk -v name=${sample} 'BEGIN {OFS = FS = "\t"}; {print ">"name"|"$2"|"$1"\n"$10;}' \
-            >> alignments/${sample}/${chrom}_${mut_pos}.fa
-    done
-
-    reference_align.pl -i alignments/${sample}/${chrom}_${mut_pos}.fa \
-        > alignments/${sample}/${chrom}_${mut_pos}.aln.fas && \
-        rm -v alignments/${sample}/${chrom}_${mut_pos}.fa
-done
+		vcf_process.pl --vcf caller1.mut.vcf --secondary-vcf caller2.mut.vcf \
+		    --combine-rows 0 1 --compare-rows 2 3 4 --primary-tag CALLER1 --secondary-tag CALLER2 \
+		    --intersect-tag CALLED_BOTH > mut.combined.vcf
 
 
 
+####Step6: generate alignments and figures for manually inspections
 
-## generate figures of bam alignments in IGV (https://www.broadinstitute.org/igv/)
-echo "snapshotDirectory alignments" > samples.run_igv.txt
 
-for bam_file in `ls bam_files/*.bam`;
-do
-    echo "load ${bam_file}" >> samples.run_igv.txt
-done
+* Local re-align reads to reference with another aligner like ClustalW2 (http://www.clustal.org/clustal2/)   
 
-cat mut.vcf | perl -ne 'next if (/^\#/); my ($chrom, $pos, $sample) = (split /\s+/)[0,1,2];
-    if($sample =~ /\;/) {$sample = "Shared"}
-    my $ex_start=$pos-55; my $ex_end=$pos+55;
-    print "goto $chrom:$ex_start-$ex_end\nsnapshot $sample\/$chrom\_", "$pos", ".ex55.png\n";
-    $ex_start=$pos-250; $ex_end=$pos+250;
-    print "goto $chrom:$ex_start-$ex_end\nsnapshot $sample\/$chrom\_", "$pos", ".ex250.png\n";
-    $ex_start=$pos-3000; $ex_end=$pos+3000;
-    print "goto $chrom:$ex_start-$ex_end\nsnapshot $sample\/$chrom\_", "$pos", ".ex3000.png\n";' \
-    >> samples.run_igv.txt
+		for record in `cat mut.vcf | perl -ne 'next if (/^\#/); my ($chrom, $pos, $sample) = (split /\s+/)[0,1,2,7];
+		    if($sample =~ /\;/) {$sample = "Shared"} print "$sample;$chrom:$pos#$1\n";'`;
+		do
+		    sample=${record/;*}
+		    mutation=${record/*;}
+		    mut_base=${mutation/*\#}
+		    mutation=${mutation/\#*}
+		    chrom=${mutation/:*}
+		    mut_pos=${mutation/*:}
+		
+		    start_pos=`echo "${mut_pos}-200" | bc`
+		    end_pos=`echo "${mut_pos}+200" | bc`
+		
+		    echo "${sample} ${chrom} ${mut_pos} ${mut_base}"
+		    
+		    if [[ -n alignments/${sample} ]]; then
+		        mkdir -pv alignments/${sample}
+		    fi
+		    
+		    echo -e "${chrom} ${start_pos} ${end_pos}\n${chrom} ${start_pos} ${mut_pos}\n${chrom} ${mut_pos} ${end_pos}\n" | \
+		        fasta_process.pl --rows 0 1 2 --subset 1 2 --query - \
+		        --fasta reference.fasta > alignments/${sample}/${chrom}_${mut_pos}.fa
+		    
+		    for bam_file in `ls bam_files/*.bam`;
+		    do
+		        sample=`basename ${bam_file} | cut -d"." -f1`
+		        samtools view -X -F 3844 ${bam_file} ${chrom}:${mut_pos}-${mut_pos} | \
+		            awk -v name=${sample} 'BEGIN {OFS = FS = "\t"}; {print ">"name"|"$2"|"$1"\n"$10;}' \
+		            >> alignments/${sample}/${chrom}_${mut_pos}.fa
+		    done
+		
+		    reference_align.pl -i alignments/${sample}/${chrom}_${mut_pos}.fa \
+		        > alignments/${sample}/${chrom}_${mut_pos}.aln.fas && \
+		        rm -v alignments/${sample}/${chrom}_${mut_pos}.fa
+		done
+
+
+
+
+* Generate figures of bam alignments in IGV (https://www.broadinstitute.org/igv/)
+
+		echo "snapshotDirectory alignments" > samples.run_igv.txt
+
+		for bam_file in `ls bam_files/*.bam`;
+		do
+		    echo "load ${bam_file}" >> samples.run_igv.txt
+		done
+
+		cat mut.vcf | perl -ne 'next if (/^\#/); my ($chrom, $pos, $sample) = (split /\s+/)[0,1,2];
+		    if($sample =~ /\;/) {$sample = "Shared"}
+		    my $ex_start=$pos-55; my $ex_end=$pos+55;
+		    print "goto $chrom:$ex_start-$ex_end\nsnapshot $sample\/$chrom\_", "$pos", ".ex55.png\n";
+		    $ex_start=$pos-250; $ex_end=$pos+250;
+		    print "goto $chrom:$ex_start-$ex_end\nsnapshot $sample\/$chrom\_", "$pos", ".ex250.png\n";
+		    $ex_start=$pos-3000; $ex_end=$pos+3000;
+		    print "goto $chrom:$ex_start-$ex_end\nsnapshot $sample\/$chrom\_", "$pos", ".ex3000.png\n";' \
+		    >> samples.run_igv.txt
 
 
 
