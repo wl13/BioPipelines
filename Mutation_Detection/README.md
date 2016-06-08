@@ -4,7 +4,9 @@
 Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR duplicates, etc.)
 
 
-###Pipelines
+
+
+##Pipelines   
 
 ####Step1: Generate initial candidate targets
 
@@ -33,8 +35,8 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
  2. extend calling regions will possibly change the emitted quality values or lost several calls;  
  3. the extend positions **should not exceed the chromosme length**, otherwise will cause the HaplotypeCaller to fail. 
 	
-
-
+<br />
+   
 ####Step2: Count accurate allele depths for each locus and each sample
 
 
@@ -96,7 +98,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 		
 		bgzip samples.fq3.indel.hc_multi.vcf && tabix -p vcf samples.fq3.indel.hc_multi.vcf.gz
 
-
+<br />
 
 ####Step3: Screen out candidate mutations
 
@@ -116,11 +118,11 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 		    --max-cmp-miss 5 --mask-only LowDepth -g samples.group.txt | \
 		    vcf-annotate -f c=2,150 --fill-type > samples.fq3.indel.mut.c2t3d5m5.vcf
 
-
+<br />
 
 ####Step4: Rerun Step1~3 with another variant sets from different callers or even mappers, preferentially those implemented with a different algorithm
 
-
+<br />
 
 ####Step5: Collect all cadidate mutations from different mappers, callers or different parameters
 
@@ -130,12 +132,12 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 		    --combine-rows 0 1 --compare-rows 2 3 4 --primary-tag CALLER1 --secondary-tag CALLER2 \
 		    --intersect-tag CALLED_BOTH > mut.combined.vcf
 
-
+<br />
 
 ####Step6: generate alignments and figures for manually inspections
 
 
-* Local re-align reads to reference with another aligner like ClustalW2 (http://www.clustal.org/clustal2/)   
+* **Local re-align reads to reference** with another aligner like ClustalW2 (http://www.clustal.org/clustal2/)   
 
 		for record in `cat mut.vcf | perl -ne 'next if (/^\#/); my ($chrom, $pos, $sample) = (split /\s+/)[0,1,2,7];
 		    if($sample =~ /\;/) {$sample = "Shared"} print "$sample;$chrom:$pos#$1\n";'`;
@@ -176,7 +178,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 
 
-* Generate figures of bam alignments in IGV (https://www.broadinstitute.org/igv/)
+* Generate figures of **bam alignments** in IGV (https://www.broadinstitute.org/igv/)
 
 		echo "snapshotDirectory alignments" > samples.run_igv.txt
 
@@ -195,9 +197,10 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 		    print "goto $chrom:$ex_start-$ex_end\nsnapshot $sample\/$chrom\_", "$pos", ".ex3000.png\n";' \
 		    >> samples.run_igv.txt
 
+<br />
 
+##Scripts
 
-###Scripts
 
 ####fillVcfDepth.pl   
 > Add read numbers counted using VarScan readcounts to vcf file 
@@ -229,6 +232,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 		-m, --minimum-vcf
 			remove original INFO and FORMAT fields
 
+<br />
 
 ####detect_mutations.pl 
 > Screen out candidate sample/group-specific mutations
