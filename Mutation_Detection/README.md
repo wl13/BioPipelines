@@ -197,7 +197,123 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 
 
+###Scripts
+
+####fillVcfDepth.pl   
+> Add read numbers counted using VarScan readcounts to vcf file 
+
+* **Options:**   
+
+		-v, --vcf    <filename>  
+			input vcf file, required
+		-o, --output <filename>   
+			output filename, default to STDOUT
+		
+		-l, --list   <filename>
+			file contains list of depth files and related sample names in the format:
+				"sample_id library_id filename"
+			delimited by tab(s) or space(s), required
+		
+		-f, --filter <strings>
+			skip filter loci, can have multiple values, separate by blanks, 
+			e.g. "LowQual SNPFilter" ...    [default: no filtering]
+		-p, --phased
+			skip unphased sites
+		
+		-t, --type   <string>
+			set "snp" to process snp sites only, or set "indel" to process indels only
+		
+		-u, --update-AD
+			update AD field according to the results of readcounts
+		
+		-m, --minimum-vcf
+			remove original INFO and FORMAT fields
 
 
+####detect_mutations.pl 
+> Screen out candidate sample/group-specific mutations
 
+* **Options:**   
+
+		    -v, --vcf     <filename>
+		        input vcf file, required
+		    -o, --output  <filename>
+		        output filename, default to STDOUT
+		
+		    -f, --filter  <strings>
+		        skip filter loci, can have multiple values, separate by space, e.g.
+		        "LowQual SNPFilter ..."
+		    -M, --match   <strings>
+		        only retain loci matches, can have multiple values, separate by space,
+		        e.g. "PASS ..."
+		    -q, --quality     <float>
+		        loci with quality smaller than this value will filtered
+		    
+		    -g, --group-file  <file>
+		        file contain group infos of each sample, each sample per line, e.g.
+		        sample1 group1
+		        sample2 group1
+		        sample3 group2
+		        ...
+		        set this option to screen group-specific mutation, only samples belong
+		        to different groups would be used as compare samples
+		        
+		    --max-shared-freq <int>
+		        locus with allele frequency below this value will be considering as a
+		        shared mutation locus
+		    
+		    --min-supp-depth  <int>
+		        minimum number of supporting reads [default: 1]
+		    --min-supp-plus   <int>
+		        minimum number of supporting reads in plus strand
+		    --min-supp-minus  <int>
+		        minimum number of supporting reads in minus strand
+		    --min-lib-depth   <int>
+		        minimum number of supporting reads in each library
+		    --min-lib-cnt     <int>
+		        minimum number of supporting libraries
+		    --max-cmp-miss    <int>
+		        maximum allowed missing alleles in compare samples
+		    --no-ref-mut
+		        remove mutations with reference allele
+		    
+		    --max-cmp-depth   <int>
+		        maximum allowed number of reads contain same mutation base (termed as
+		        mutation-like base here, possible from sequencing or mapping errors)
+		        in each compared sample, set --max-cmp-depth to 2 means none of compare
+		        samples could contain more than 2 mutation-like reads (e.g., FPD<=2 for
+		        each compared sample), a value of 3 indicates no more than 3, etc.
+		    --max-cmp-perc    <float>
+		        maximum allowed percentage of reads contain mutation-like base in
+		        each compared sample, this is an alternative option of "--max-cmp-depth"
+		    
+		    --max-cmp-total   <int>
+		        maximum allowed number of total reads containing mutation-like base
+		        across all compared samples
+		        
+		    --max-cmp-freq    <string>
+		        detailed settings of maximum allowed number of reads with the mutation
+		        -like base in compare samples at each depth, this option should be
+		        setted according to "--max-cmp-depth" option, e.g.
+		        if "--max-cmp-depth" is set to 2, this option should have 2 values
+		        seperated by comma, like "3,1", which means at most 3 samples can have
+		        1 read, while only 1 sample can have 2 reads
+		    
+		    --controls  <strings>
+		        specify samples served as controls where no missing calls is allowed,
+		        and shared mutations contain those samples will be filtered
+		    
+		    --mask-only <strings>
+		        set proper FILTER field for those records failed given criteria rather
+		        than remove them, can have multiple values, support filtering types:
+		        LowDepth (--min-supp-depth)
+		        StrandBias (--min-supp-plus or --min-supp-minus)
+		        HighMissing (--max-cmp-miss)
+		        NonSpecific (--max-cmp-total)
+		        NoControl (--controls)
+		        Shared
+
+	**Note:**  
+	1. This script is designed to process vcf files with AD (Allele Depth) field for each sample, and mainly used for processing output file from another script fillVcfDepth.pl, which could give all required informations used in this script;
+	2. "--max-cmp-depth" or "--max-cmp-perc" are cutoff values which actually determines whether an sample will be treated as contain "candidate mutation" (contain mutation-like reads more than these thresholds, a true mutation allele) or belong to compare samples (contain mutation-like reads below this thresholds, possible sequencing errors). A lower value will considering more samples exceed this thresholds as "candidate mutation" samples, e.g. --max-cmp-depth 0 indicates samples contain any mutation-like reads are possible candidates, in other words compared samples could not have any mutation-like reads. A lower thresholds would give a higher false negative due to less tolerant of sequencing or mapping errors, while a higher thresholds could lead to slightly more false positives. In practice,"--max-cmp-detph 2" will mostly works fine.
 
