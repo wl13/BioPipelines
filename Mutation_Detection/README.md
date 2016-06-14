@@ -48,7 +48,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 		        
 		        echo "[`date`]: Start processing ${sample} ... "
 		        
-		        samtools mpileup -d100000 -q20 -f reference.fasta -l samples.fq3.snp.bed \
+		        samtools mpileup -Ad100000 -q20 -f reference.fasta -l samples.fq3.snp.bed \
 		            PREFIX.bam | grep -vP "\t0\t" \
 		            > readcounts/samples.fq3.snp.${sample}.mpileup
 		        
@@ -66,7 +66,15 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 	  2. 0x0200 (aka 512 or "f"), failed QC;  
 	  3. 0x0100 (aka 256 or "s"), non primary alignment;  
 	  4. 0x0004 (aka 4 or "u"), unmapped.   
-	3. Anomalous read pairs (mate unmapped or non-proper paired, for the later case I'm not sure the exactly definition of the "non-proper pairs") were not used by samtools mpileup, apply -A if your want to use those reads, however this could lead to more spurious results especially from possible contaminations.
+	3. Apply "-A" option would include anomalous read pairs, those are reads with mate unmapped or not proper paired (for the later case, I'm not sure the exactly definition of those "non-proper pairs" ...). For samples merely contaminated, apply "-A" usually works better than turn it off (as those "non-proper" reads in one sample could occasionally become "proper" in another sample, which would cause failure in removing those "non-specific" calls); however, for samples not "clean" enough, apply this option would result in more "contaminated" calls. Several workarounds could be used:
+	  1. Run mpileup twice, with or without "-A", and only trust the intersection of final mutation calls from both set;
+	  2. Only remove reads with mate unmapped before feed the bam file to mpileup and apply "-A" in mpileup, as those contaminations usually diverged from reference genome, it's less likely for both pairs to be mapped, this could be done by
+	  
+			samtools view -b -F 3852 -L samples.fq3.snp.bed PREFIX.bam \
+			    > samples.fq3.snp.PF.bam
+		        samtools mpileup -Ad100000 -q20 -f reference.fasta -l samples.fq3.snp.bed \
+		            samples.fq3.snp.PF.bam | grep -vP "\t0\t" \
+		            > readcounts/samples.fq3.snp.${sample}.mpileup
 
 
 * Get the file list of all counting results
