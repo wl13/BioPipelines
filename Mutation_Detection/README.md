@@ -48,7 +48,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 		        
 		        echo "[`date`]: Start processing ${sample} ... "
 		        
-		        samtools mpileup -Ad100000 -q20 -f reference.fasta -l samples.fq3.snp.bed \
+		        samtools mpileup -d100000 -q20 -f reference.fasta -l samples.fq3.snp.bed \
 		            PREFIX.bam | grep -vP "\t0\t" \
 		            > readcounts/samples.fq3.snp.${sample}.mpileup
 		        
@@ -66,7 +66,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 	  2. 0x0200 (aka 512 or "f"), failed QC;  
 	  3. 0x0100 (aka 256 or "s"), non primary alignment;  
 	  4. 0x0004 (aka 4 or "u"), unmapped.   
-	3. Apply -A to use anomalous read pairs in mpileup, which are not used by default (requring r874+).
+	3. Anomalous read pairs (mate unmapped or non-proper paired, for the later case I'm not sure the exactly definition of the "non-proper pairs") were not used by samtools mpileup, apply -A if your want to use those reads, however this could lead to more spurious results especially from possible contaminations.
 
 
 * Get the file list of all counting results
