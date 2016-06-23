@@ -60,14 +60,14 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 		    '
 
 	**Note for reads counted:**  
-	1. Requires samtools version >= 0.1.9, as older versions did not deploy Base Alignment Quality (BAQ), which aims to provide an efficient and effective way to rule out false SNPs caused by nearby INDELs.  
+	1. Requires **samtools version >= 0.1.9**, as older versions did not deploy Base Alignment Quality (BAQ), which aims to provide an efficient and effective way to rule out false SNPs caused by nearby INDELs.  
 	2. The default settings for mpileup is to filter reads with bitwise flag 0X704. So for mpileup generation the following reads will not been considered:  
 	  1. 0x0400 (aka 1024 or "d"), duplicate;   
 	  2. 0x0200 (aka 512 or "f"), failed QC;  
 	  3. 0x0100 (aka 256 or "s"), non primary alignment;  
 	  4. 0x0004 (aka 4 or "u"), unmapped.   
 	3. Apply "-A" option would include anomalous read pairs, those are reads with mate unmapped or not proper paired (for the later case, I'm not sure the exactly definition of those "non-proper pairs" ...). For samples merely contaminated, apply "-A" usually works better than turn it off (as those "non-proper" reads in one sample could occasionally become "proper" in another sample, which would cause failure in removing those "non-specific" calls); however, for samples not "clean" enough, apply this option would result in more "contaminated" calls. Several workarounds could be used:
-	  1. Run mpileup twice, with or without "-A", and only trust the intersection of final mutation calls from both set;
+	  1. Run mpileup twice, **with or without "-A"**, and **only trust the intersection** of final mutation calls from both set;
 	  2. Only remove reads with mate unmapped before feed the bam file to mpileup and apply "-A" in mpileup, as those contaminations usually diverged from reference genome, it's less likely for both pairs to be mapped, this could be done by  
 		* 
 
@@ -78,7 +78,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 			    	samples.fq3.snp.PF.bam | grep -vP "\t0\t" \
 			    	> readcounts/samples.fq3.snp.${sample}.mpileup 
      
-	4. It's also suggested to generate a third set with "-q0" instead of "-q20" if the sample size is limited, an intersection between different mapping quality thresholds could also help to reduce the false positive rate while only marginally increase the false negative rate. 
+	4. It's also suggested to generate a third set with **"-q0"** instead of **"-q20"** if the sample size is limited, an **intersection between different mapping quality thresholds** could also help to reduce the false positive rate while only marginally increase the false negative rate. 
 
 * Get the file list of all counting results
 
