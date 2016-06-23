@@ -78,7 +78,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 			    	samples.fq3.snp.PF.bam | grep -vP "\t0\t" \
 			    	> readcounts/samples.fq3.snp.${sample}.mpileup 
      
-
+	4. It's also suggested to generate a third set with "-q0" instead of "-q20" if the sample size is limited, an intersection between different mapping quality thresholds could also help to reduce the false positive rate while only marginally increase the false negative rate. 
 
 * Get the file list of all counting results
 
