@@ -1,12 +1,12 @@
 #!/usr/bin/perl -w
 #
-#   sim_mutation_reads.pl -- Simulate reads with synthetic mutations use the method describled in Keightley et al. 2014.
+#   sim_mutation_reads.pl -- Simulate reads with synthetic mutations use the method describled in Keightley et al. 2014, 2015.
 #
 #
 #   Author: Nowind
 #   Created: 2012-02-21
-#   Updated: 2016-05-23
-#   Version: 2.0.1
+#   Updated: 2016-07-16
+#   Version: 2.1.0
 #
 #   Change logs:
 #   Version 1.0.0 15/01/21: The initial version.
@@ -18,6 +18,10 @@
 #                                   to the chromosome length.
 #   Version 2.0.1 16/05/23: Update: stop generate mutations on reads with indels or soft-clips;
 #                                   rearrange output infos.
+#   Version 2.1.0 16/07/16: Update: set the default value of "--min-depth" to 0 to suppress success
+#                                   test by default; add option "--no-ref-n" to skip reference N sites;
+#                                   fix various issues due to indels; remove test for nucleotide 
+#                                   consistent compared to reference allele.
 
 
 
@@ -36,17 +40,18 @@ use MyPerl::FileIO qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '2.0.1';
+my $VERSION = '2.1.0';
 my $HEADER  = "##$CMDLINE\n##Version: $VERSION\n";
 
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
 
 
-my %options             = ();
-   $options{rand_size}  = 100;
-   $options{out_format} = 'fastq';
-   $options{max_shared} = 1;
-   $options{min_depth}  = 1;
+my %options                  = ();
+   $options{rand_size}       = 100;
+   $options{out_format}      = 'fastq';
+   $options{max_shared}      = 1;
+   $options{min_depth}       = 0;
+   $options{max_frac_in_del} = 0.8;
 my ($no_rc, $use_rg_id,
     $samtools_opts, $min_seq_len, $max_clipping, $min_insert_size, $max_insert_size);
 GetOptions(
@@ -69,6 +74,8 @@ GetOptions(
             
             "max-shared=i"     => \$options{max_shared},
             "min-depth=i"      => \$options{min_depth},
+            "no-ref-N"         => \$options{skip_ref_n_sites},
+            "max-frac-del=f"   => \$options{max_frac_in_del},
            );
 
 my $show_help = ($CMDLINE =~ /\-help/) ? 0 : 1;
@@ -126,13 +133,27 @@ Simulation Options:
     --max-shared   <int>
         choose how many samples could shared the mutation loci, the samples
         were also choosed by random [default: 1]
-    --min-depth    <int>
-        minimum required depth of "mutated" reads, loci with a depth smaller
-        than this threshold would be set to this threshold [default: 1]
-    
+
     -e, --exclude  <strings>
         exclude unwanted chromosomes or scaffolds while simulating, all
         chromosomes with ids match strings specified here would be ignored 
+
+    --min-depth    <int>
+        minimum required depth of "mutated" reads, loci with a depth smaller
+        than this threshold would be set to this threshold. This option would
+        also cause those loci where no mutated reads were successful generated
+        to be skipped [default: 0]
+        
+    -n, --no-ref-N
+        do not generate mutations in reference N sites
+    --max-frac-del  <float>
+        skip deletion loci in the simulated samples, as generating mutations in
+        deletions is meaningless, this option determines whether a locus would
+        be considered as deletion, the fraction was calculated by
+        
+            replaced reads with mutation in deletion / total replaced reads
+        
+        default: 0.8
 
 EOF
 
@@ -216,6 +237,9 @@ while ($rand_index <= $options{rand_size})
     my $pos   = int(rand($CHROM_LENGTHs{$chrom}+1));
 
     my $ref_base   = uc(substr($CHROM_SEQs{$chrom}, $pos-1, 1));
+    
+    next if ($options{skip_ref_n_sites} && $ref_base eq 'N');
+    
     my @alt_bases  = grep { $_ ne $ref_base } qw(A T G C);
     my $mut_base   = $alt_bases[int(rand(3))];
 
@@ -346,21 +370,25 @@ sub gen_mutated_reads
     ##
     my $total_depth = scalar @reads;
     
-    return -2 if $total_depth < $options{min_depth};
+    if ($options{min_depth} > 0 && $total_depth < $options{min_depth}) {
+        return -2;
+    }
     
     my $mut_depth   = $rh_emp_depths->{$total_depth} ?
       choose_weighted($rh_emp_depths->{$total_depth}->{depth}, $rh_emp_depths->{$total_depth}->{count}) : int(rand($total_depth));
     
-    $mut_depth = $options{min_depth} if $mut_depth < $options{min_depth};
+    if ($options{min_depth} > 0 && $mut_depth < $options{min_depth}) {
+        $mut_depth = $options{min_depth};
+    }
     
-
     ##
     ## get the relative position in each read, if this position contain a reference
     ## base, replace it with the mutation base, replicate this process until the
     ## desired detph of reads contain mutations is generated
     ##
-    my $replaced_count = 0;
-    my @replaced_reads = ();
+    my $replaced_count    = 0;
+    my @replaced_reads    = ();
+    my $reads_in_deletion = 0;
     for (my $i=0; $i < @reads; $i++)
     {
         next if ($reads[$i] =~ /^@/ || $reads[$i] =~ /^\s+$/); ## skip header
@@ -370,15 +398,58 @@ sub gen_mutated_reads
         my ($QNAME, $FLAG, $RNAME, $POS, $MAPQ, $CIGAR, 
             $MRNM, $NPOS, $TLEN, $SEQ, $QUAL, @OPT) = (split /\s+/, $reads[$i]);
         
-        ## reads contain indels or soft-clips may cause a failure in map original
-        ## replace positions, those reads were not used in generate synthesized mutations
-        next if ($CIGAR =~ /(I|D|S)/);
-        
         my $read_mut_pos = $mut_pos - $POS + 1;
+        
+        ## reads contain indels or soft-clips may cause a failure in mapping original replace positions
+        if ($CIGAR =~ /(I|D)/) {
+            my $full_read_str  = '';
+            my @ins_counts_all = ();
+            
+            while ($CIGAR =~ m/(\d+)(\w)/g)
+            {
+                $full_read_str .= $2 x $1;
+                
+                if ($2 eq 'I') {
+                    push @ins_counts_all, $1;
+                }
+            }
+            
+            my $base_str = substr($full_read_str, $read_mut_pos-1, 1);
+            my $bef_str  = substr($full_read_str, 0, $read_mut_pos-1);
+            my $aft_str  = substr($full_read_str, $read_mut_pos);
+            
+            my $bef_del_count = ($bef_str =~ tr/D/D/);
+            my $bef_ins_count = ($bef_str =~ tr/I/I/);
+            
+            ## recalculate the mutation position in the reads
+            if ($base_str eq 'M' && ($bef_str =~ /(I|D)/)) {
+                ###print "##corrected1a:$CIGAR\t$mut_pos\t$POS\t$read_mut_pos#\n";
+                
+                $read_mut_pos = $read_mut_pos - $bef_del_count + $bef_ins_count;
+                
+                ###print "##corrected1b:$read_mut_pos\t$full_read_str\t$bef_str\t$base_str\t$aft_str#\n";
+            }
+            elsif ($base_str eq 'I') {
+                ###print "##corrected2a:$CIGAR\t$mut_pos\t$POS\t$read_mut_pos#\n";
+                
+                $aft_str =~ /(^I+)/;
+                my $aft_ins_count = $1 ? length($1) : 0;
+                
+                $read_mut_pos = $read_mut_pos - $bef_del_count + $bef_ins_count + 1 + $aft_ins_count;
+                
+                ###print "##corrected2b:$read_mut_pos\t$full_read_str\t$bef_str\t$base_str\t$aft_str#\n";
+            }
+            elsif ($base_str eq 'D') {
+                ###print "##skiped:$CIGAR\t$mut_pos\t$POS\t$read_mut_pos#\n";
+                
+                $reads_in_deletion ++; next;
+            }
+        }
         
         my $read_base = uc(substr($SEQ, $read_mut_pos-1, 1));
         my $mut_read  = $reads[$i];
-        if ($read_base eq $ref_base && $replaced_count < $mut_depth) {
+        ###print "#1#$mut_read\n";
+        if ($replaced_count < $mut_depth) {
             substr($SEQ, $read_mut_pos-1, 1, $mut_base);
             
             $mut_read = join "\t", ($QNAME, $FLAG, $RNAME, $POS, $MAPQ, $CIGAR, 
@@ -386,12 +457,21 @@ sub gen_mutated_reads
             
             $replaced_count ++;
             
+            ###print STDOUT "#2#$mut_read\n";
+            
             print STDOUT "SAM:$mut_sample:$mut_region\t$mut_read\n";
         }
     }
     
-    return -2 if $replaced_count < $options{min_depth};
+    if ($reads_in_deletion >= 1 && $reads_in_deletion >= $options{max_frac_in_del} * $replaced_count) {
+        return -2; ## skip deletions
+    }
+    
+    if ($options{min_depth} > 0 && $replaced_count < $options{min_depth}) {
+        return -2; ## skip low depth
+    }
     
     my $non_replaced_depth = $total_depth - $replaced_count;
+    
     return "$mut_sample\t$non_replaced_depth,$replaced_count";
 }
