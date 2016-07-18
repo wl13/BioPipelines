@@ -5,8 +5,8 @@
 #
 #   Author: Nowind
 #   Created: 2012-02-21
-#   Updated: 2016-07-16
-#   Version: 2.1.0
+#   Updated: 2016-07-18
+#   Version: 2.1.1
 #
 #   Change logs:
 #   Version 1.0.0 15/01/21: The initial version.
@@ -22,6 +22,7 @@
 #                                   test by default; add option "--no-ref-n" to skip reference N sites;
 #                                   fix various issues due to indels; remove test for nucleotide 
 #                                   consistent compared to reference allele.
+#   Version 2.1.1 16/07/18: Update: add option "--no-deletion"; now the deletions were not ignored by default.
 
 
 
@@ -40,7 +41,7 @@ use MyPerl::FileIO qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '2.1.0';
+my $VERSION = '2.1.1';
 my $HEADER  = "##$CMDLINE\n##Version: $VERSION\n";
 
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
@@ -52,6 +53,7 @@ my %options                  = ();
    $options{max_shared}      = 1;
    $options{min_depth}       = 0;
    $options{max_frac_in_del} = 0.8;
+   $options{skip_deletions}  = 0;
 my ($no_rc, $use_rg_id,
     $samtools_opts, $min_seq_len, $max_clipping, $min_insert_size, $max_insert_size);
 GetOptions(
@@ -76,6 +78,7 @@ GetOptions(
             "min-depth=i"      => \$options{min_depth},
             "no-ref-N"         => \$options{skip_ref_n_sites},
             "max-frac-del=f"   => \$options{max_frac_in_del},
+            "no-deletion"      => \$options{skip_deletions},
            );
 
 my $show_help = ($CMDLINE =~ /\-help/) ? 0 : 1;
@@ -144,8 +147,11 @@ Simulation Options:
         also cause those loci where no mutated reads were successful generated
         to be skipped [default: 0]
         
-    -n, --no-ref-N
+    --no-ref-N
         do not generate mutations in reference N sites
+        
+    --no-deletion
+        skip deletions while simulating
     --max-frac-del  <float>
         skip deletion loci in the simulated samples, as generating mutations in
         deletions is meaningless, this option determines whether a locus would
@@ -463,7 +469,7 @@ sub gen_mutated_reads
         }
     }
     
-    if ($reads_in_deletion >= 1 && $reads_in_deletion >= $options{max_frac_in_del} * $replaced_count) {
+    if ($options{skip_deletions} && $reads_in_deletion >= 1 && $reads_in_deletion >= $options{max_frac_in_del} * $replaced_count) {
         return -2; ## skip deletions
     }
     
