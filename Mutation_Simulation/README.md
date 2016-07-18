@@ -1,5 +1,7 @@
-####Generate synthetic (in silico) mutations from real sequencing reads. 
+###Generate synthetic (in silico) mutations from real sequencing reads. 
 Those synthetic mutations could be used to test the false-negative rate of a certain mutation-detection pipeline.
+
+<br />
 
 ####Original methods described in:
 
@@ -7,20 +9,24 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 
 * 2) Keightley, P. D. et al. Estimation of the Spontaneous Mutation Rate in Heliconius melpomene. Mol Biol Evol 32, 239–243 (2015).
 
+<br />
 
-####Pipelines
 
-* **Step1:** get the empirical distributions of the depth of non-reference alleles for all heterozygous genotypes in 20 sequenced samples
+##Pipelines
 
-		bcftools filter -i 'QUAL>=50 && TYPE="snp" && MAF>=0.05' \       ## try to reduce false positives
-		    20_samples.hc.vcf.gz | \                                     ## more filtering could be added
-		    perl -e 'my %alt_depths = ();                                ## sampling all heterozygous loci
+####Step1: get the empirical distributions of the depth of non-reference alleles
+
+* sampling non-reference read-depth of heterozygous loci (this requires the AD field)
+
+		bcftools filter -i 'QUAL>=50 && TYPE="snp" && MAF>=0.05' \
+		    20_samples.hc.vcf.gz | \
+		    perl -e 'my %alt_depths = ();
 		      while(<>){
 		        next if (/^\#/);
 		        my ($chrom, $pos, $id, $ref, $alt, $qual, 
 		        	  $filter, $info, $format, @samples) = (split /\t/);
 		        for my $sample (@samples) {
-		            next unless($sample =~ /(\d+\/\d+):(\d+),(\d+)/);    ## make use of the AD field
+		            next unless($sample =~ /(\d+\/\d+):(\d+),(\d+)/);
 		            my ($GT, $REF_DP, $ALT_DP) = ($1, $2, $3);
 		            next unless($GT eq "0/1"); 
 		            my $total_DP = $REF_DP + $ALT_DP; 
@@ -33,31 +39,30 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 		        }
 		      }' > 20_samples.hc.depths.csv
 
+<br />
 
-* **Step2:** generate synthetic reads (reads with synthetic mutations) for all 20 sequenced samples from mapping results
+####Step2: generate synthetic reads (reads with synthetic mutations) for all 20 sequenced samples from mapping results
 
-		## Get all bam files
+* Get all bam files
+
 		BAM_FILES=`find examples/ -name "*.bam" -print | \
 				xargs -I BAM echo -n "BAM "`
-		
-		## Random select a genome position with a read depth x, then replace
-		## y reads with a random picked nucleotide (different from the original
-		## one), the y was determined according to the empirical distribution.
-		## Generate reads with synthesized mutations, only use read:
-		##    1) mapped in proper pair (-f 2);
-		##    2) mapping quality >= 20 (-q 20);
-		##    3) NOT belong to (-F 3852):
-		##      read unmapped
-		##      mate unmapped
-		##      not primary alignment
-		##      read fails platform/vendor quality checks
-		##      read is PCR or optical duplicate
-		##      supplementary alignment
+
+* Random select a genome position with a read depth x, then replace y reads with a random picked nucleotide (different from the original one), the y was determined according to the empirical distribution. Generate reads with synthesized mutations, excluding non-informative reads (-F 3844):    
+	1. unmapped;   
+	2. not primary alignment;   
+	3. read fails platform/vendor quality checks;   
+	4. read is PCR or optical duplicate;   
+	5. supplementary alignment;      
+
+* 
+   
 		sim_mutation_reads.pl --fasta reference.fasta \
 		    --depth 20_samples.hc.depths.csv \
-		    --bams ${BAM_FILES} --random-size 1000 --samtools "-q 20 -f 2 -F 3852" \
+		    --bams ${BAM_FILES} --random-size 1000 --samtools "-F 3844" \
 		    > 20_samples.simulated.dat
 
+<br />
 
 * **Step3:** extract not only the synthetic reads, but also its paired reads
 
@@ -84,6 +89,84 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 		        -o reads/${sample}_ex10k >> reads/${sample}_ex10k.log 2>&1
 		'
 
+<br />
 
 
+##Scripts
+
+####sim_mutation_reads.pl   
+> Script used to generate synthetic mutated sites from original bam files 
+
+* **Options:**   
+
+		Input Options:
+		
+		    -f, --fasta       <filename>
+		        reference sequences in fasta format, required
+		    
+		    -d, --depth       <filename>
+		        input file contain empirical distribution of read depths, required
+		
+		    -b, --bams        <filename>
+		        bam file(s), at least one bam file should be specified
+		
+		
+		Output Options:
+		
+		    -o, --output <filename>
+		        output filename, default to STDOUT
+		        
+		    -n, --no-rc
+		        do not reverse complement sequence with negtive strand
+		    -u, --use-rg
+		        add read group id to extracted records
+		        
+		Simulation Options:
+		    --random-size <int>
+		        number of mutations to be simulated, default: 100
+		
+		    -s, --samtools <string>
+		        directly pass samtools view options to this script, e.g.
+		        "-f 4 -F 8"
+		
+		    --min-len      <int>
+		        minium sequence length
+		
+		    --max-clipping <int>
+		        maximum allowed clipping length, include both soft and hard
+		        clipping bases
+		    
+		    --min-insert   <int>
+		    --max-insert   <int>
+		        screen out records with insert size wihtin this range
+		
+		    --max-shared   <int>
+		        choose how many samples could shared the mutation loci, the samples
+		        were also choosed by random [default: 1]
+		
+		    -e, --exclude  <strings>
+		        exclude unwanted chromosomes or scaffolds while simulating, all
+		        chromosomes with ids match strings specified here would be ignored 
+		
+		    --min-depth    <int>
+		        minimum required depth of "mutated" reads, loci with a depth smaller
+		        than this threshold would be set to this threshold. This option would
+		        also cause those loci where no mutated reads were successful generated
+		        to be skipped [default: 0]
+		        
+		    --no-ref-N
+		        do not generate mutations in reference N sites
+		        
+		    --no-deletion
+		        skip deletions while simulating
+		    --max-frac-del  <float>
+		        skip deletion loci in the simulated samples, as generating mutations in
+		        deletions is meaningless, this option determines whether a locus would
+		        be considered as deletion, the fraction was calculated by
+		        
+		            replaced reads with mutation in deletion / total replaced reads
+		        
+		        default: 0.8
+
+<br />
 
