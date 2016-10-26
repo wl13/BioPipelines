@@ -332,3 +332,13 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 	1. This script is designed to process vcf files with AD (Allele Depth) field for each sample, and mainly used for processing output file from another script fillVcfDepth.pl, which could give all required informations used in this script;
 	2. "--max-cmp-depth" or "--max-cmp-perc" are cutoff values which actually determines whether an sample will be treated as contain "candidate mutation" (contain mutation-like reads more than these thresholds, a true mutation allele) or belong to compare samples (contain mutation-like reads below this thresholds, possible sequencing errors). A lower value will considering more samples exceed this thresholds as "candidate mutation" samples, e.g. --max-cmp-depth 0 indicates samples contain any mutation-like reads are possible candidates, in other words compared samples could not have any mutation-like reads. A lower thresholds would give a higher false negative due to less tolerant of sequencing or mapping errors, while a higher thresholds could lead to slightly more false positives. In practice,"--max-cmp-detph 2" will mostly works fine.
 
+
+<br />
+
+###More detailed description of this pipeline could be found in the below publications:
+
+1. Yang, S., Wang, L., Huang, J., Zhang, X., Yuan, Y., Chen, J.-Q., Hurst, L.D., and Tian, D. (2015). Parent-progeny sequencing indicates higher mutation rates in heterozygotes. Nature 523: 463–467.
+
+2. Xie, Z., Wang, L., Wang, L., Wang, Z., Lu, Z., Tian, D., Yang, S., and Hurst, L.D. (2016). Mutation rate analysis via parent–progeny sequencing of the perennial peach. I. A low rate in woody perennials and a higher mutagenicity in hybrids. Proc. R. Soc. B 283: 20161016.
+
+
