@@ -337,7 +337,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 ##Publications
 
-**More detailed descriptions of this pipeline could be also be found in the below publications:**
+**More detailed descriptions of this pipeline could also be found in the below publications:**
 
 1. Yang, S., Wang, L., Huang, J., Zhang, X., Yuan, Y., Chen, J.-Q., Hurst, L.D., and Tian, D. (2015). Parent-progeny sequencing indicates higher mutation rates in heterozygotes. *Nature* 523: 463–467.
 
