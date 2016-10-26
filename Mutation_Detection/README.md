@@ -335,10 +335,12 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 <br />
 
-###More detailed description of this pipeline could be found in the below publications:
+##Publications
 
-1. Yang, S., Wang, L., Huang, J., Zhang, X., Yuan, Y., Chen, J.-Q., Hurst, L.D., and Tian, D. (2015). Parent-progeny sequencing indicates higher mutation rates in heterozygotes. Nature 523: 463–467.
+**More detailed descriptions of this pipeline could be also be found in the below publications:**
 
-2. Xie, Z., Wang, L., Wang, L., Wang, Z., Lu, Z., Tian, D., Yang, S., and Hurst, L.D. (2016). Mutation rate analysis via parent–progeny sequencing of the perennial peach. I. A low rate in woody perennials and a higher mutagenicity in hybrids. Proc. R. Soc. B 283: 20161016.
+1. Yang, S., Wang, L., Huang, J., Zhang, X., Yuan, Y., Chen, J.-Q., Hurst, L.D., and Tian, D. (2015). Parent-progeny sequencing indicates higher mutation rates in heterozygotes. *Nature* 523: 463–467.
+
+2. Xie, Z., Wang, L., Wang, L., Wang, Z., Lu, Z., Tian, D., Yang, S., and Hurst, L.D. (2016). Mutation rate analysis via parent–progeny sequencing of the perennial peach. I. A low rate in woody perennials and a higher mutagenicity in hybrids. *Proc. R. Soc. B* 283: 20161016.
 
 
