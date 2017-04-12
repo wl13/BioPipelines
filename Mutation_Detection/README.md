@@ -1,4 +1,4 @@
-###Pipelines to detect "mutations" (rare variants) among a cohort of samples use mapping results
+### Pipelines to detect "mutations" (rare variants) among a cohort of samples use mapping results
 
 
 Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR duplicates, etc.)
@@ -6,9 +6,9 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 
 
-##Pipelines   
+## Pipelines   
 
-####Step1: Generate initial candidate targets
+#### Step1: Generate initial candidate targets
 
 * Use vcf_process.pl to screen out **rare variants**, set a frequency higher than the expected frequency of the mutations to tolerant genotyping errors
 
@@ -37,7 +37,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 	
 <br />
    
-####Step2: Count accurate allele depths for each locus and each sample
+#### Step2: Count accurate allele depths for each locus and each sample
 
 
 * Use VarScan (version 2.3.6, http://dkoboldt.github.io/varscan/) and samtools (version 0.1.19, https://github.com/samtools/samtools) to generate read counts for each **SNV site**
@@ -111,7 +111,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 <br />
 
-####Step3: Screen out candidate mutations
+#### Step3: Screen out candidate mutations
 
 * Use detect_mutations.pl to screen out candidate **point mutations**
 
@@ -131,11 +131,11 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 <br />
 
-####Step4: Rerun Step1~3 with another variant sets from different callers or even mappers, preferentially those implemented with a different algorithm
+#### Step4: Rerun Step1~3 with another variant sets from different callers or even mappers, preferentially those implemented with a different algorithm
 
 <br />
 
-####Step5: Collect all cadidate mutations from different mappers, callers or different parameters
+#### Step5: Collect all cadidate mutations from different mappers, callers or different parameters
 
 * Combine various results into a single vcf file use vcf_process.pl  
 
@@ -145,7 +145,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 <br />
 
-####Step6: generate alignments and figures for manually inspections
+#### Step6: generate alignments and figures for manually inspections
 
 
 * **Local re-align reads to reference** with another aligner like ClustalW2 (http://www.clustal.org/clustal2/)   
@@ -210,10 +210,10 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 <br />
 
-##Scripts
+## Scripts
 
 
-####fillVcfDepth.pl   
+#### fillVcfDepth.pl   
 > Add read numbers counted using VarScan readcounts to vcf file 
 
 * **Options:**   
@@ -245,7 +245,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 <br />
 
-####detect_mutations.pl 
+#### detect_mutations.pl 
 > Screen out candidate sample/group-specific mutations
 
 * **Options:**   
@@ -335,7 +335,7 @@ Assume the sequencing data were already mapped and pre-processed (e.g. mark PCR 
 
 <br />
 
-##Publications
+## Publications
 
 **More detailed descriptions of this pipeline could also be found in the below publications:**
 
