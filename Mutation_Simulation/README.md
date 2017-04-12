@@ -1,9 +1,9 @@
-###Generate synthetic (in silico) mutations from real sequencing reads. 
+### Generate synthetic (in silico) mutations from real sequencing reads. 
 Those synthetic mutations could be used to test the false-negative rate of a certain mutation-detection pipeline.
 
 <br />
 
-####Original methods described in:
+#### Original methods described in:
 
 * 1) Keightley, P. D., Ness, R. W., Halligan, D. L. & Haddrill, P. R. Estimation of the Spontaneous Mutation Rate per Nucleotide Site in a Drosophila melanogaster Full-Sib Family. Genetics 196, 313–320 (2014).
 
@@ -12,9 +12,9 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 <br />
 
 
-##Pipelines
+## Pipelines
 
-####Step1: get the empirical distributions of the depth of non-reference alleles
+#### Step1: get the empirical distributions of the depth of non-reference alleles
 
 * sampling non-reference read-depth of heterozygous loci (this requires the AD field)
 
@@ -41,7 +41,7 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 
 <br />
 
-####Step2: generate synthetic reads (reads with synthetic mutations) for all 20 sequenced samples from mapping results
+#### Step2: generate synthetic reads (reads with synthetic mutations) for all 20 sequenced samples from mapping results
 
 * Get all bam files
 
@@ -92,9 +92,9 @@ Those synthetic mutations could be used to test the false-negative rate of a cer
 <br />
 
 
-##Scripts
+## Scripts
 
-####sim_mutation_reads.pl   
+#### sim_mutation_reads.pl   
 > Script used to generate synthetic mutated sites from original bam files 
 
 * **Options:**   
