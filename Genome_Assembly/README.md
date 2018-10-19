@@ -1,6 +1,6 @@
 
 
-### Step 1) Prepare files, extract subreads and filtered by read length (>= 500) and score (>=0.8)
+### Step 1) Prepare files, extract subreads and filtered by read length (>= 500) and score (>=0.8) using bash5tools.py (http://www.pacb.com/products-and-services/analytical-software/smrt-analysis/)
     bash5tools.py --minLength 500 --minReadScore 0.8 --readType subreads --outType fastq \
         --outFilePrefix file1.filtered_subreads file1.bas.h5
     .
@@ -10,27 +10,27 @@
         --outFilePrefix fileN.filtered_subreads fileN.bas.h5
 
 
-### Step 2) initial assembly with Canu (release v1.4, http://canu.readthedocs.org/en/stable) use PacBio data only
+### Step 2) Initial assembly with Canu (release v1.4, https://github.com/marbl/canu) use PacBio data only
     canu -p Tetep -d Tetep_PacBio genomeSize=449m ovsMemory=40g-100g -pacbio-raw *.filtered_subreads.fastq.gz
 
 
 
-### Step 3) first round polishing with Quiver
+### Step 3) First round polishing with Quiver (https://github.com/PacificBiosciences/GenomicConsensus)
     ls *.bax.h5 > input.fofn
 
-   #### Step 3.1) align raw subreads to assembled contigs
+   #### Step 3.1) Align raw subreads to assembled contigs
     pbalign -vv --nproc 4 --forQuiver --tmpDir /tmp/ input.fofn contigs.fasta contigs.cmp.h5
 
-   #### Step 3.2) polishing with quiver
+   #### Step 3.2) Polishing with quiver
     quiver -j 30 contigs.cmp.h5 -r contigs.fasta -o contigs.quiver.fasta -o contigs.quiver.gff
 
 
 
 
-### Step 4) scaffolding with Chromosomer (https://github.com/gtamazian/chromosomer)
+### Step 4) Scaffolding with Chromosomer (https://github.com/gtamazian/chromosomer)
     chromosomer fastalength contigs.quiver.fasta contigs.quiver.length.csv
 
-   #### Step 4.1) blast to MH63 reference genome
+   #### Step 4.1) blast to MH63 reference genome (ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/001/623/365/GCA_001623365.1_MH63RS1/)
     makeblastdb -dbtype nucl -in MH63R_genome.fasta -title MH63R_genome -out MH63R_genome
 
     blastn -query contigs.quiver.fasta -db MH63R_genome.fasta -task blastn -evalue 1e-10 \
@@ -49,7 +49,7 @@
         cat contigs.quiver.chromosomer.fasta - > scaffolds.fasta
 
 
-### Step 5) gap closing with PBJelly using all raw PacBio reads
+### Step 5) Gap closing with PBJelly (https://sourceforge.net/p/pb-jelly/wiki/Home/) using all raw PacBio reads
     source PBSuite_15.8.24/setup.sh
 
     fakeQuals.py scaffolds.fasta scaffolds.qual
@@ -58,7 +58,6 @@
     summarizeAssembly.py scaffolds.fasta > scaffolds.sum.csv
 
     readSummary.py PBJelly.Protocol.xml > subreads.sum.csv
-
 
    #### Step 5.1) Setup files
     Jelly.py setup PBJelly.Protocol.xml
