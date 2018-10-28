@@ -1,5 +1,6 @@
+## Tetep genome *denovo* assmbly using PacBio sequencing data
 
-
+<br />
 
 ### Step 1) Prepare files, extract subreads and filtered by read length (>= 500) and score (>=0.8) using bash5tools.py (http://www.pacb.com/products-and-services/analytical-software/smrt-analysis/)
     bash5tools.py --minLength 500 --minReadScore 0.8 --readType subreads --outType fastq \
@@ -10,11 +11,12 @@
     bash5tools.py --minLength 500 --minReadScore 0.8 --readType subreads --outType fastq \
         --outFilePrefix fileN.filtered_subreads fileN.bas.h5
 
+<br />
 
 ### Step 2) Initial assembly with Canu (release v1.4, https://github.com/marbl/canu) use PacBio data only
     canu -p Tetep -d Tetep_PacBio genomeSize=449m ovsMemory=40g-100g -pacbio-raw *.filtered_subreads.fastq.gz
 
-
+<br />
 
 ### Step 3) First round polishing with Quiver (https://github.com/PacificBiosciences/GenomicConsensus)
     ls *.bax.h5 > input.fofn
@@ -26,7 +28,7 @@
     quiver -j 30 contigs.cmp.h5 -r contigs.fasta -o contigs.quiver.fasta -o contigs.quiver.gff
 
 
-
+<br />
 
 ### Step 4) Scaffolding with Chromosomer (https://github.com/gtamazian/chromosomer)
     chromosomer fastalength contigs.quiver.fasta contigs.quiver.length.csv
@@ -49,6 +51,7 @@
         fasta_process.pl --fasta contigs.quiver.fasta --query - --rows 0 --wordwrap 72 | \
         cat contigs.quiver.chromosomer.fasta - > scaffolds.fasta
 
+<br />
 
 ### Step 5) Gap closing with PBJelly (https://sourceforge.net/p/pb-jelly/wiki/Home/) using all raw PacBio reads
     source PBSuite_15.8.24/setup.sh
@@ -82,6 +85,7 @@
     python PBSuite_15.8.24/bin/rename_jelly_out.py scaffolds.fasta \
         liftOverTable.json jelly.out.fasta > scaffolds.jelly.fasta
 
+<br />
 
 ### Step 6) second round polishing with Quiver
     smrtwrap pbalign -vv --nproc 4 --forQuiver --tmpDir /tmp/ input.fofn \
@@ -89,3 +93,5 @@
 
     smrtwrap quiver -j 24 scaffolds.jelly.cmp.h5 -r scaffolds.jelly.fasta \
         -o scaffolds.jelly.quiver.fasta -o scaffolds.jelly.quiver.gff
+
+<br />
