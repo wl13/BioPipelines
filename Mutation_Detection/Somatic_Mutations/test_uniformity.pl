@@ -129,12 +129,11 @@ sub test_uniformity
            push @groups_rand, rand();
         }
         
-        ## We subtract $n if need non-zero because we'll be adding one to each number later.
+        ## Calculate factor.
         my $factor = ($opts->{total}) / sum(@groups_rand);
         
         for my $j (0..$#groups_rand)
         {
-           ## add one if need non-zero
            $groups_rand[$j] = int($groups_rand[$j] * $factor);
         }
         
