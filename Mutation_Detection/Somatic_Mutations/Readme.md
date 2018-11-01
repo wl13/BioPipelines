@@ -4,12 +4,12 @@
 
 
 
+## Scripts
 
 
 #### test_uniformity.pl
 > D (Variance/Mean) test by comparing observed D and simulated D\
 > Code for random simulation was borrowed from the post in https://stackoverflow.com/a/22381248 by ikegami (the second approach) and modified to allow for zero-values
-Usage:   perl /opt/nfs/scripts/test_uniformity.pl [options]
 
 * **Options:**   
 
