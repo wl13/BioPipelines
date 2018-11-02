@@ -5,8 +5,8 @@
 #
 #   Author: Nowind
 #   Created: 2012-05-31
-#   Updated: 2015-11-04
-#   Version: 1.3.3
+#   Updated: 2018-11-02
+#   Version: 1.3.4
 #
 #   Change logs:
 #   Version 1.0.0 14/05/15: The initial version.
@@ -28,6 +28,7 @@
 #   Version 1.3.1 15/09/29: Bug fixed where group info missed in some loci.
 #   Version 1.3.2 15/10/07: Add support for depth and strand bias check of shared mutations.
 #   Version 1.3.3 15/11/04: Bug fixed: FILTER field not proper assigned in multiple-allelic loci.
+#   Version 1.3.4 18/11/02: Update some option descriptions.
 
 
 use strict;
@@ -42,7 +43,7 @@ use MyPerl::Vcf qw(:all);
 
 ######################## Main ########################
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '1.3.3';
+my $VERSION = '1.3.4';
 my $HEADER  = "##$CMDLINE\n##Version: $VERSION\n";
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
 
@@ -85,7 +86,7 @@ GetOptions(
 unless( $options{vcf} && $options{help} ) {
     print <<EOF;
 
-$0  -- Screen out candidate sample-specific snp mutations.
+$0  -- Screen out candidate mutation sites.
 
 Version: $VERSION
 
@@ -143,8 +144,8 @@ Options:
     --no-ref-mut
         remove mutations with reference allele
 
-     *Note: those six options only valid for sample-specific mutations (e.g.
-      "shared frequency" = 1)
+     *Note: for sample-shared mutations, these criteria only require 1 sample
+      to be passed
     
     
     --max-cmp-depth   <int>
