@@ -119,6 +119,7 @@ Some details which have been descibed in previous section are not mentioned here
               echo "[`date`]: Finished processing ${sample}"
           '
 
+<br />
     
 * The **fillVcfDepth.pl** needs to read the whole file into memory and could be rather memory-consuming. An alternative script **fillVcfDepth-split.pl** only read each chromosome per time and is thus more preferable for large files. **fillVcfDepth-split.pl** requires a bgzip-compressed file and a tabix index (usually bundled with samtools). However, **fillVcfDepth-split.pl** could be extremely slow if the genome contains many sequences, e.g., a draft genome with tens of thousands of scaffolds.
     
@@ -179,7 +180,7 @@ Some details which have been descibed in previous section are not mentioned here
                     tabix -p vcf hc_gvcf/samples.hc.fq19.snp.${out_set}.vcf.gz
             '
 
-
+<br />
 
 
 * For small insertion/deleletions (indels), we run HaplotypeCaller in **multiple-sample calling** mode around previous candidate indel sites
@@ -213,16 +214,23 @@ Some details which have been descibed in previous section are not mentioned here
       bgzip hc_gvcf/samples.hc.fq19.indel.hc_multi.vcf && \
           tabix -p vcf hc_gvcf/samples.hc.fq19.indel.hc_multi.vcf.gz
     
-    
+
+<br />
+
 ### Step3: Screen out candidate mutations
 
 * Parallel comparison is extreme-efficient in removing false positive calls but rely heavily on whether a proper "control" is available. For germline analysis, we usually only focused on sample-specific mutations, and all other non-focal samples could be used as controls. For somatic analysis, such a control is not so clear as many mutations present in multiple samples.
 
 * For somatic analysis, one expectation is that samples with closer physical or genealogical relations are more likely to share true mutations (mutations raised before they seperating), thus we could first set up groups for each sample if we know these details. Take a tree as an example, leaves from the same branch are more likely to share true somatic mutations, while "mutations" found in two leaves from different branches are more likely to be false positives. Therefore, we could group samples by branches, and then compare each branch. This method is termed as "topology-based" here. This approach remain the notion of a parallel compare and is robust to various sequencing/mapping/calling artifacts.
 
-* However, it's not clear whether the pre-assumption of topology-based approach is always true. A simple solution is to just look into the allele frequency, and filtering out those truely non-fixed mutations, termed as a "frequency-based" approach. Ideally, this approach should work 
+* However, it's not clear whether the pre-assumption of topology-based approach is always true. A more direct approach is to just look at the allele frequency of each variant as mentioned at the beginning, and filtering out those non-fixed variant sites, termed as the "frequency-based" approach. In practice, this approach is subjected to various artifacts (as the focal samples and control samples are not well distinguishable) and is of high false positive rate as well as high false negative rate. Even so, it serve as a good complementary to test whether the topology-based approach really lose many true mutations. 
 
-#### Step3-1: substitution mutations
+* When using the frequency-based approach, to deal with high false positive discover rate, a good practice is to test several criteria (e.g., --max-shared-freq, --max-cmp-miss, and etc.), from most strict to most loose, and evaluate the results by inspecting those differences between different criteria.
+
+<br />
+
+#### Step3-1: filtering substitution mutations
+
     find . -name "samples.*.fq19.snp.*.vcf.gz" | \
         xargs -n 1 -P 6 -I VCFIN \
         sh -c '
@@ -240,29 +248,177 @@ Some details which have been descibed in previous section are not mentioned here
             ## screen according to frequency
             detect_mutations.pl -v VCFIN \
                 --max-cmp-depth 2 --max-cmp-total 3 --min-supp-depth 5 \
-                --max-cmp-miss 0 --min-supp-plus 1 --min-supp-minus 1 --max-shared-freq 50 | \
+                --max-cmp-miss 0 --min-supp-plus 1 --min-supp-minus 1 --max-shared-freq 15 | \
                 vcf-annotate -f c=3,150 --fill-type \
-                --output ${out_prefix}.s50c2t3d5m0.frequency.vcf
+                --output ${out_prefix}.s15c2t3d5m0.frequency.vcf
         '
 
-#### Step3-2: indel mutations
-find  -name "samples.*.fq19.indel.*.vcf.gz" | \
-    xargs -n 1 -P 0 -I VCFIN \
-    sh -c '
-        out_prefix=`echo VCFIN | sed "s/hc_multi.vcf.gz/mut/"`
-        
-        ## screen according to topology
-        vcf_process.pl --vcf VCFIN --quality 30 --var-type indel | flt_vcf_AD | \
-            detect_mutations.pl -v - --max-cmp-depth 2 --max-cmp-total 3 --min-supp-depth 5 --max-cmp-miss 5 \
-            -g samples.3_groups.txt | \
-            vcf-annotate -f c=3,150 --fill-type \
-            > ${out_prefix}.c2t3d5m5.topology.vcf
-        
-        ## screen according to frequency
-        vcf_process.pl --vcf VCFIN --quality 30 --var-type indel | flt_vcf_AD | \
-            detect_mutations.pl -v - --max-cmp-depth 2 --max-cmp-total 3 --min-supp-depth 5 --max-cmp-miss 0 --max-shared-freq 50 | \
-            vcf-annotate -f c=3,150 --fill-type \
-            > ${out_prefix}.s50c2t3d5m0.frequency.vcf
-    '
+<br />
+
+#### Step3-2: filtering indel mutations
+
+* For indels, the filtering is based on AD field. Very few sites from the VCF file generated by HaplotypeCaller do not have AD field (which usually with low confidence) need to be filtered use the script "flt_vcf_AD"
+
+      find  -name "samples.*.fq19.indel.*.vcf.gz" | \
+          xargs -n 1 -P 0 -I VCFIN \
+          sh -c '
+              out_prefix=`echo VCFIN | sed "s/hc_multi.vcf.gz/mut/"`
+
+              ## screen according to topology
+              vcf_process.pl --vcf VCFIN --quality 30 --var-type indel | flt_vcf_AD | \
+                  detect_mutations.pl -v - --max-cmp-depth 2 --max-cmp-total 3 --min-supp-depth 5 \
+                  --max-cmp-miss 5 -g groups.txt | \
+                  vcf-annotate -f c=3,150 --fill-type \
+                  > ${out_prefix}.c2t3d5m5.topology.vcf
+
+              ## screen according to frequency
+              vcf_process.pl --vcf VCFIN --quality 30 --var-type indel | flt_vcf_AD | \
+                  detect_mutations.pl -v - --max-cmp-depth 2 --max-cmp-total 3 --min-supp-depth 5 \
+                  --max-cmp-miss 0 --max-shared-freq 15 | \
+                  vcf-annotate -f c=3,150 --fill-type \
+                  > ${out_prefix}.s15c2t3d5m0.frequency.vcf
+          '
+
+<br />
+
+### Step4: Collecting candidate mutations from different set
+
+* A "softmask" strategy is highly recommended to collect all candidate mutations from different criteria/approaches/methods, and rank each site by tagging it with those details. Through inspection of those details, one can easily distinguish false positive calls while minimize false negative rate.
+
+<br />
+
+#### Step4-1: Combine results from topology-based approach
+
+#### 1) Combine results from UnifiedGenotyper
+
+    vcf_process.pl --vcf ug_single/samples.ug.fq19.snp.MQ20.NAR.mut.c2t3d5m5.topology.vcf \
+        --secondary-vcf ug_single/samples.ug.fq19.snp.MQ20.AR.mut.c2t3d5m5.topology.vcf \
+        --primary-tag NAR --secondary-tag AR --intersect-tag PF | \
+        vcf_process.pl --vcf - --primary-tag MQ20 --secondary-tag MQ0 --intersect-tag MQPASS \
+        --secondary-vcf ug_single/samples.ug.fq19.snp.MQ0.AR.mut.c2t3d5m5.topology.vcf \
+        > ug_single/samples.ug.fq19.snp.mut.c2t3d5m5.topology.combined.vcf
+
+#### 2) Combine results from HaplotypeCaller
+
+    vcf_process.pl --vcf hc_gvcf/samples.hc.fq19.snp.MQ20.NAR.mut.c2t3d5m5.topology.vcf \
+        --secondary-vcf hc_gvcf/samples.hc.fq19.snp.MQ20.AR.mut.c2t3d5m5.topology.vcf \
+        --primary-tag NAR --secondary-tag AR --intersect-tag PF | \
+        vcf_process.pl --vcf - --primary-tag MQ20 --secondary-tag MQ0 --intersect-tag MQPASS \
+        --secondary-vcf hc_gvcf/samples.hc.fq19.snp.MQ0.AR.mut.c2t3d5m5.topology.vcf \
+        > hc_gvcf/samples.hc.fq19.snp.mut.c2t3d5m5.topology.combined.vcf
+
+<br />
+
+#### Step4-2: Combine results from frequency-based approach
+
+#### 1) Combine results from UnifiedGenotyper
+
+    vcf_process.pl --vcf ug_single/samples.ug.fq19.snp.MQ20.NAR.mut.s15c2t3d5m0.frequency.vcf \
+        --secondary-vcf ug_single/samples.ug.fq19.snp.MQ20.AR.mut.s15c2t3d5m0.frequency.vcf \
+        --primary-tag NAR --secondary-tag AR --intersect-tag PF | \
+        vcf_process.pl --vcf - --primary-tag MQ20 --secondary-tag MQ0 --intersect-tag MQPASS \
+        --secondary-vcf ug_single/samples.ug.fq19.snp.MQ0.AR.mut.s15c2t3d5m0.frequency.vcf \
+        > ug_single/samples.ug.fq19.snp.mut.s15c2t3d5m0.frequency.combined.vcf
+
+#### 2) Combine results from HaplotypeCaller
+
+    vcf_process.pl --vcf hc_gvcf/samples.hc.fq19.snp.MQ20.NAR.mut.s15c2t3d5m0.frequency.vcf \
+        --secondary-vcf hc_gvcf/samples.hc.fq19.snp.MQ20.AR.mut.s15c2t3d5m0.frequency.vcf \
+        --primary-tag NAR --secondary-tag AR --intersect-tag PF | \
+        vcf_process.pl --vcf - --primary-tag MQ20 --secondary-tag MQ0 --intersect-tag MQPASS \
+        --secondary-vcf hc_gvcf/samples.hc.fq19.snp.MQ0.AR.mut.s15c2t3d5m0.frequency.vcf \
+        > hc_gvcf/samples.hc.fq19.snp.mut.s15c2t3d5m0.frequency.combined.vcf
+
+<br />
+
+#### Step4-3: Combine different methods
+
+    vcf_process.pl --vcf hc_gvcf/samples.hc.fq19.snp.mut.c2t3d5m5.topology.combined.vcf \
+        --secondary-vcf ug_single/samples.ug.fq19.snp.mut.c2t3d5m5.topology.combined.vcf \
+        --combine-rows 0 1 --compare-rows 2 3 4 \
+        --primary-tag HC_GVCF --secondary-tag UG_Single --intersect-tag "UG_Single+HC_GVCF" \
+        > combined/samples.fq19.snp.mut.c2t3d5m5.topology.combined.vcf
+
+    vcf_process.pl --vcf hc_gvcf/samples.hc.fq19.snp.mut.s15c2t3d5m0.frequency.combined.vcf \
+        --secondary-vcf ug_single/samples.ug.fq19.snp.mut.s15c2t3d5m0.frequency.combined.vcf \
+        --combine-rows 0 1 --compare-rows 2 3 4 \
+        --primary-tag HC_GVCF --secondary-tag UG_Single --intersect-tag "UG_Single+HC_GVCF" \
+        > combined/samples.fq19.snp.mut.s15c2t3d5m0.frequency.combined.vcf
+
+<br />
+
+#### Step4-4: Combine topology and frequency
+
+    vcf_process.pl --vcf combined/samples.fq19.snp.mut.c2t3d5m5.topology.combined.vcf \
+        --secondary-vcf combined/samples.fq19.snp.mut.s15c2t3d5m0.frequency.combined.vcf \
+        --combine-rows 0 1 --compare-rows 2 3 4 \
+        --primary-tag Grouped --secondary-tag NonGrouped --intersect-tag "Grouped+NonGrouped" \
+        > combined/samples.fq19.snp.mut.combined.vcf
 
 
+<br />
+
+
+#### Similar for indels, simply combine different all results
+
+    vcf_process.pl --vcf hc_gvcf/samples.hc.fq19.indel.mut.c2t3d5m5.topology.vcf \
+        --secondary-vcf ug_single/samples.ug.fq19.indel.mut.c2t3d5m5.topology.vcf \
+        --combine-rows 0 1 --compare-rows 2 3 4 \
+        --primary-tag HC_GVCF --secondary-tag UG_Single --intersect-tag "UG_Single+HC_GVCF" \
+        > combined/samples.fq19.indel.mut.c2t3d5m5.topology.combined.vcf
+
+    vcf_process.pl --vcf hc_gvcf/samples.hc.fq19.indel.mut.s15c2t3d5m0.frequency.vcf \
+        --secondary-vcf ug_single/samples.ug.fq19.indel.mut.s15c2t3d5m0.frequency.vcf \
+        --combine-rows 0 1 --compare-rows 2 3 4 \
+        --primary-tag HC_GVCF --secondary-tag UG_Single --intersect-tag "UG_Single+HC_GVCF" \
+        > combined/samples.fq19.indel.mut.s15c2t3d5m0.frequency.combined.vcf
+
+    vcf_process.pl --vcf combined/samples.fq19.indel.mut.c2t3d5m5.topology.combined.vcf \
+        --secondary-vcf combined/samples.fq19.indel.mut.s15c2t3d5m0.frequency.combined.vcf \
+        --combine-rows 0 1 --compare-rows 2 3 4 \
+        --primary-tag Grouped --secondary-tag NonGrouped --intersect-tag "Grouped+NonGrouped" \
+        > combined/samples.fq19.indel.mut.combined.vcf
+
+
+<br />
+
+### Step5: Formating results
+
+* As a rule of thumb, a site pass following criteria is of highest confidence and will be marked as "Confidence" here.
+
+  1. Pass "AR", "NAR" filters - meaning no anamlous reads;
+  2. Pass "MQ0", "MQ20" filters - meaning high mapping confidence;
+  3. Pass "Missing" filter - the higher the missing rate the lower informative of a site;
+  4. Could be called by HaplotypeCaller (HC_GVCF);
+  5. "FPD<=1" - One or more reads carrying identical "mutation allele" in control samples usually suggest a false positive call;
+  6. Variant quality >= 50, this criterion also depends on the sequencing depth, and could be lowered, but generally has less influence
+  
+* All other sites could be viewed as "Evaluation set". Further inspecition (manually or experimentally) of the confidence set (assess false positive discover rate) and evalution set (assess false negative discover rate) is highly recommended, and is usually necessary for a pilot survey. Some criteria could be fine-tuned through this trial-and-error process.
+
+
+      perl -ne 'next if (/^\#\#/); if (/\#/) {
+          print "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tMUTATION\tLength\tMethods\tMut_Type\tFrequency\tMut_Set\tCombine\n";
+          next;} my @line = (split /\s+/); my $info = $line[7]; $info =~ /MA=(\w+)/; my $mut_allele = $1;
+          my $var_type = 0; if ($info =~ /MATYPE\=INDEL/) {$var_type = "INDEL";}
+          my $fq_sum = 1; if($info =~ /Shared\=(\d+)/){$fq_sum = $1;}
+          my $type = ($mut_allele eq $line[3]) ? "REF" : "ALT"; my $out_line = join "\t", @line;
+          my $method = "UG_Single"; 
+          if ($info =~ /UG_Single\+HC_GVCF/){$method = "UG_Single+HC_GVCF";}elsif($info =~ /HC_GVCF/){$method = "HC_GVCF";}
+          my @filters = (); if ($info =~ /Combine=AR;/) {push @filters, "AR";} if ($info =~ /Combine=NAR;/) {push @filters, "NAR";}
+          if ($info =~ /Combine=MQ20;/) {push @filters, "MQ20";} if ($info =~ /Combine=MQ0;/) {push @filters, "MQ0";}
+          if ($info !~ /NMISS=0/) {push @filters, "MISSING";} 
+          if (($info !~ /FPD=0/) && ($info !~ /FPD=1;FPFQ=1;/)) {push @filters, "FPD";}
+          if ($method eq "UG_Single") {push @filters, "UG";} if ($line[5] < 50) {push @filters, "LowQual";}
+          my $set = "TP"; 
+          if ($info =~ /Combine=Grouped\+NonGrouped/){$set = "TP+FQ";}elsif($info =~ /Combine=NonGrouped/){$set = "FQ";}
+          if (scalar @filters == 0) {$set .= "(Confidence)";} else {my $filters = join ",", @filters; $set .= "($filters)";}
+          print "$out_line\t$var_type\t$method\t$type\t$fq_sum\t$set\t$combine\n";' \
+          combined/samples.mut.combined.vcf \
+          > combined/samples.mut.combined.csv
+    
+    
+<br />
+
+* Tips: For manually inspection, the previous section contains codes for generating figures and alignments which ease the whole process.
+
+<br />
