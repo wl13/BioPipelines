@@ -214,5 +214,55 @@ Some details which have been descibed in previous section are not mentioned here
           tabix -p vcf hc_gvcf/samples.hc.fq19.indel.hc_multi.vcf.gz
     
     
-    
+### Step3: Screen out candidate mutations
+
+* Parallel comparison is extreme-efficient in removing false positive calls but rely heavily on whether a proper "control" is available. For germline analysis, we usually only focused on sample-specific mutations, and all other non-focal samples could be used as controls. For somatic analysis, such a control is not so clear as many mutations present in multiple samples.
+
+* For somatic analysis, one expectation is that samples with closer physical or genealogical relations are more likely to share true mutations (mutations raised before they seperating), thus we could first set up groups for each sample if we know these details. Take a tree as an example, leaves from the same branch are more likely to share true somatic mutations, while "mutations" found in two leaves from different branches are more likely to be false positives. Therefore, we could group samples by branches, and then compare each branch. This method is termed as "topology-based" here. This approach remain the notion of a parallel compare and is robust to various sequencing/mapping/calling artifacts.
+
+* However, it's not clear whether the pre-assumption of topology-based approach is always true. A simple solution is to just look into the allele frequency, and filtering out those truely non-fixed mutations, termed as a "frequency-based" approach. Ideally, this approach should work 
+
+#### Step3-1: substitution mutations
+    find . -name "samples.*.fq19.snp.*.vcf.gz" | \
+        xargs -n 1 -P 6 -I VCFIN \
+        sh -c '
+            out_prefix=`echo VCFIN | sed "s/vcf.gz/mut/"`
+
+            echo "${out_prefix}"
+
+            ## screen according to topology
+            detect_mutations.pl -v VCFIN --max-cmp-depth 2 --max-cmp-total 3 \
+                --min-supp-depth 5 --max-cmp-miss 5 --min-supp-plus 1 --min-supp-minus 1 \
+                -g groups.txt | \
+                vcf-annotate -f c=3,150 --fill-type \
+                --output ${out_prefix}.c2t3d5m5.topology.vcf
+
+            ## screen according to frequency
+            detect_mutations.pl -v VCFIN \
+                --max-cmp-depth 2 --max-cmp-total 3 --min-supp-depth 5 \
+                --max-cmp-miss 0 --min-supp-plus 1 --min-supp-minus 1 --max-shared-freq 50 | \
+                vcf-annotate -f c=3,150 --fill-type \
+                --output ${out_prefix}.s50c2t3d5m0.frequency.vcf
+        '
+
+#### Step3-2: indel mutations
+find  -name "samples.*.fq19.indel.*.vcf.gz" | \
+    xargs -n 1 -P 0 -I VCFIN \
+    sh -c '
+        out_prefix=`echo VCFIN | sed "s/hc_multi.vcf.gz/mut/"`
+        
+        ## screen according to topology
+        vcf_process.pl --vcf VCFIN --quality 30 --var-type indel | flt_vcf_AD | \
+            detect_mutations.pl -v - --max-cmp-depth 2 --max-cmp-total 3 --min-supp-depth 5 --max-cmp-miss 5 \
+            -g samples.3_groups.txt | \
+            vcf-annotate -f c=3,150 --fill-type \
+            > ${out_prefix}.c2t3d5m5.topology.vcf
+        
+        ## screen according to frequency
+        vcf_process.pl --vcf VCFIN --quality 30 --var-type indel | flt_vcf_AD | \
+            detect_mutations.pl -v - --max-cmp-depth 2 --max-cmp-total 3 --min-supp-depth 5 --max-cmp-miss 0 --max-shared-freq 50 | \
+            vcf-annotate -f c=3,150 --fill-type \
+            > ${out_prefix}.s50c2t3d5m0.frequency.vcf
+    '
+
 
