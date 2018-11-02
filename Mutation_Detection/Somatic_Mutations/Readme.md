@@ -16,6 +16,52 @@ Test inheritance of somatic mutations
 
 ## Miscellaneous scripts
 
+<br />
+
+#### fillVcfDepth-split.pl
+
+> An alternative of fillVcfDepth.pl
+
+* Options:
+
+        -v, --vcf    <filename>
+            input vcf file, required
+        -o, --output <filename>
+            output filename, default to STDOUT
+
+        -l, --list   <filename>
+            file contains list of depth files and related sample names in the
+            format:
+
+            sample_id library_id filename
+
+            delimited by tab(s) or space(s), required
+
+            *Note:
+            All files specified in this list should be compressed with bgzip and
+            indexed using tabix:
+            bgzip example.readcounts
+            tabix -S1 -s1 -b2 -e2 example.readcounts.gz
+
+        -f, --filter <strings>
+            skip filter loci, can have multiple values, separate by blanks, e.g.
+            "LowQual SNPFilter" ...    [default: no filtering]
+            -p, --phased
+            skip unphased sites
+
+        -t, --type   <string>
+            set "snp" to process snp sites only, or set "indel" to process indels
+            only
+
+        -u, --update-AD
+            update AD field according to the results of readcounts
+
+        -m, --minimum-vcf
+            remove original INFO and FORMAT fields
+
+
+
+<br />
 
 #### test_uniformity.pl
 > D (Variance/Mean) test by comparing observed D and simulated D\
@@ -31,4 +77,6 @@ Test inheritance of somatic mutations
 
             -t, --times
                 random times [default: 1]
+<br />
+
 
