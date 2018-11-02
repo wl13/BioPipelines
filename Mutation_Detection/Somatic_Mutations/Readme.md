@@ -1,10 +1,20 @@
-## Pipelines to identify somatic mutations in plant tissues e.g. leaves, root and etc.
+## Pipelines and scripts to identify and analysis somatic mutations in plant tissues e.g. leaves, root and etc.
 
-Comming soon....
+<br />
 
+### somatic-mutation-detection.md
 
+An adaption of previous pipeline to deal with somatic mutations
 
-## Scripts
+<br />
+
+### somatic-inheritance-analysis.md
+
+Test inheritance of somatic mutations
+
+<br />
+
+## Miscellaneous scripts
 
 
 #### test_uniformity.pl
