@@ -49,3 +49,32 @@
 ### Step 5) confirm whether those candidate NLR pairs follow the co-evolve relationship between different species/cultivars in a phylogenetic tree
 
 <br />
+
+
+## Scripts
+
+
+#### search_nearby_genes.pl   
+> Extract closely resided genes 
+
+* **Usage:**
+
+        perl search_nearby_genes.pl -i <input> [-o <output>]
+
+* **Options:**
+
+        -i, --input  <filename>
+            file contains ordered genes with strand info, required
+
+        -r, --rows   <numbers>
+            specify the row fields of gene id, chromosome id, gene order, and
+            gene strand in input file [default: 0 1 2 3]
+
+        -m, --max-include <int>
+            how many non-desired genes are allowed between two genes
+            [default: 0, means adjacent genes]
+
+        -o, --output  <filename>
+            output filename, default to STDOUT
+
+<br />
