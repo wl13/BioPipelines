@@ -29,10 +29,12 @@
 
 ### Step 3) search for strict and non-strict paired NLRs
 
+> strict: head-to-head adjacent NLRs;
+
+> non-strict: 1. nearby but non-adjacent NLRs (enclosing <= 2 non-NLR genes);   2. adjacent NLRs but not head-to-head orientated
+
       search_nearby_genes.pl -i NLRs.ordered.csv -m 2 -r 4 0 5 3 > NLRs.paired.csv
 
-* strict: head-to-head adjacent NLRs;
-* non-strict: 1) nearby but non-adjacent NLRs (enclosing <= 2 non-NLR genes); 2) adjacent NLRs but not head-to-head orientated
 * Note: manully investigation is required for regions with >= 3 adjacent NLRs
  
 <br />
