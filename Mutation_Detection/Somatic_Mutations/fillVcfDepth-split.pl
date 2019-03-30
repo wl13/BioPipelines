@@ -5,8 +5,8 @@
 #
 #   Author: Nowind
 #   Created: 2012-02-21
-#   Updated: 2016-07-20
-#   Version: 1.2.0
+#   Updated: 2019-03-30
+#   Version: 1.3.0
 #
 #   Change logs:
 #   Version 1.0.0 12/12/21: The initial version.
@@ -23,6 +23,7 @@
 #                           multiple libraries is found.
 #   Version 1.1.0 15/08/16: Bug fixed in processing mixed loci.
 #   Version 1.2.0 15/08/16: Updated: reduce memory footprints by using indexed readcount files.
+#   Version 1.3.0 19/03/30: Bug fixed: failed to fill ungenotyped sites.
 
 
 use strict;
@@ -36,7 +37,7 @@ use MyPerl::Vcf qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '1.2.0';
+my $VERSION = '1.3.0';
 my $HEADER  = "##$CMDLINE\n##Version: $VERSION\n";
 
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
@@ -287,7 +288,7 @@ EOF
         my %tags = ();
         for (my $i=0; $i<@tags; $i++) { $tags{$tags[$i]} = $i; }
         
-        my @genotyped_samples = grep { $_ ne '.' && $_ ne './.' } @SAMPLES;
+        ###my @genotyped_samples = grep { $_ ne '.' && $_ ne './.' } @SAMPLES;
         
         if( $update_AD && !$tags{AD} ) {
             $FORMAT .= ":AD";
@@ -296,9 +297,9 @@ EOF
         my @filled_samples = ();
         for (my $i=0; $i<@SAMPLES; $i++)
         {
-            if ($SAMPLES[$i] eq '.' || $SAMPLES[$i] eq './.') {
-                push @filled_samples, './.'; next;
-            }
+            ###if ($SAMPLES[$i] eq '.' || $SAMPLES[$i] eq './.') {
+            ###    push @filled_samples, './.'; next;
+            ###}
             
             my $sample_id  = $names[$i];
             my %detail_dps = ();
