@@ -42,7 +42,7 @@
 
 
 ### Step 4) map paired NLR homologues from other genomes
-* first run orthofinder to find homologues of each NLR, then manually check whether non-strict paired NLRs have strict paired NLR homologues
+* first run orthofinder (https://github.com/davidemms/OrthoFinder) to find homologues of each NLR, then manually check whether non-strict paired NLRs have strict paired NLR homologues
 
       orthofinder -f nb-arc_pep/ -t 12 -og
 
