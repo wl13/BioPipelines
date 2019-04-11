@@ -80,3 +80,12 @@ Test inheritance of somatic mutations
 <br />
 
 
+
+
+## Publications
+
+**More detailed descriptions of this pipeline could also be found in the below publications:**
+
+[1] L. Wang, Y. Ji, Y. Hu, H. Hu, X. Jia, M. Jiang, X. Zhang, L. Zhao, Y. Zhang, Y. Jia, C. Qin, L. Yu, J. Huang, S. Yang, L.D. Hurst, D. Tian, The architecture of intra-organism mutation rate variation in plants, PLOS Biology. 17 (2019) e3000191. doi:10.1371/journal.pbio.3000191.
+
+
