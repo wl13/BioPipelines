@@ -87,7 +87,12 @@ Clustering was done by a "seeding-and-extension" approach (originally described 
 
 #### Step5: Detect gene conversions
 
-* Find the converted genotypes differs to its background, most times one need to further purge the markers to reduce any possible false positives
+* Find the converted genotypes differs to its background, most times one need to further purge the markers (i.e., markers.flt.vcf.gz) to reduce any possible false positives
+
+        detect_recomb_events.pl --blocks markers.blocks.l10km25.csv \
+            --vcf markers.flt.vcf.gz \
+            --source-tag SC --min-markers 1 --min-gc-len 1 --max-gc-len 10000 --min-bg-len 10000 \
+            --output gene_convs.csv
 
 
 <br />
