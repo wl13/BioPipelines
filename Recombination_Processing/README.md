@@ -66,6 +66,8 @@ Clustering was done by a "seeding-and-extension" approach (originally described 
 		    --output markers.blocks.cmp --length reference_genome.fasta.fai \
 		    --colors "type1:strong_red2;B:strong_blue2" --sort-blocks sample-original sample --format png
 
+* A much nicer plot could be generated using [scripts](https://github.com/jiaxianqing/Ploting_scripts) written by [Xianqing Jia](https://github.com/jiaxianqing/)
+
 <br />
 
 #### Step3: Refine the boundaries
