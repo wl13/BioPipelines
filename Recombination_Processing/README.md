@@ -68,7 +68,7 @@ Clustering was done by a "seeding-and-extension" approach (originally described 
 
 * A much nicer plot could be generated using [scripts](https://github.com/jiaxianqing/Ploting_scripts) written by [Xianqing Jia](https://github.com/jiaxianqing/), below is an example taken from there:
 
-```
+
 <img src="https://github.com/jiaxianqing/Ploting_scripts/blob/master/examples/plot.block.png"  div align = "center" width="75%" height="75%" />
 
 <br />
