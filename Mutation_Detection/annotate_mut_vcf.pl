@@ -4,12 +4,13 @@
 #
 #   Author: Nowind
 #   Created: 2012-02-21
-#   Updated: 2021-04-06
-#   Version: 2.0.0
+#   Updated: 2021-04-08
+#   Version: 2.0.1
 #
 #   Change logs:
 #   Version 1.0.0 21/04/01: The initial version.
 #   Version 2.0.0 21/04/06: Change this script to a more flexible mutation confidence annotating script.
+#   Version 2.0.1 21/04/08: Fixed a bug when missing allele detail in some pre-exist variant sites.
 
 
 
@@ -24,7 +25,7 @@ use MyPerl::FileIO qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '2.0.0';
+my $VERSION = '2.0.1';
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
 
 my %annotates                    = ();
@@ -350,6 +351,8 @@ if ($annotates{pre_exist_vars}) {
         next if (/^\#/ || /^\s+$/); ## skip header and blank lines
         
         my ($chrom, $pos, $allele_details) = (split /\s+/);
+        
+        next unless ($allele_details =~ /\:/);
         
         $pre_exist_vars{$chrom}->{$pos}->{info} = $allele_details;
         
