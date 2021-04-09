@@ -5,15 +5,16 @@
 #   Author: Nowind
 #   Created: 2012-02-21
 #   Updated: 2021-04-09
-#   Version: 2.1.0
+#   Version: 2.1.1
 #
 #   Change logs:
 #   Version 1.0.0 21/04/01: The initial version.
 #   Version 2.0.0 21/04/06: Change this script to a more flexible mutation confidence annotating script.
 #   Version 2.0.1 21/04/08: Fixed a bug when missing allele detail in some pre-exist variant sites.
 #   Version 2.0.2 21/04/09: Add support for threading when processig bam files.
-#   Version 2.1.0 21/04/09: Moved the bam processing to another script as it is too slow; change the inaccurate bam evidence to warn level.
-
+#   Version 2.1.0 21/04/09: Moved the bam processing to another script as it is too slow; change the inaccurate
+#                           bam evidence to warn level.
+#   Version 2.1.1 21/04/09: Revised the approach to estimate the sample distance.
 
 
 use strict;
@@ -27,7 +28,7 @@ use MyPerl::FileIO qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '2.1.0';
+my $VERSION = '2.1.1';
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
 
 my %annotates                    = ();
@@ -791,10 +792,12 @@ sub get_group_info
 
 =head2 estimate_sample_distance
 
-    About   : Get group infos of each sample
-    Usage   : get_group_info($group_file);
-    Args    : File contain group infos
-    Returns : Null
+    About   : Estimate distances between shared samples
+    Usage   : estimate_sample_distance($ra_samples, $rh_sample_kinships);
+    Args    : Reference to array of shared samples;
+              Reference to hash of sample kinship.
+    Returns : Estiamted sample distance;
+              Details of traversed branch levels.
 
 =cut
 sub estimate_sample_distance
@@ -821,46 +824,63 @@ sub estimate_sample_distance
         }
     }
     
-    my @out_grp_counts  = ();
-    my @grp_lvls        = sort {$b <=> $a} keys %group_counts;
-    my $sample_dist     = 0;
+    my @grp_counts  = ();
+    my @grp_lvls    = sort {$b <=> $a} keys %group_counts;
     for my $lvl (@grp_lvls)   ## count from higher to lower levels
     {
         my @lvl_counts = ();
         my $lvl_sum    = 0;
         my @gids       = sort keys %{$group_counts{$lvl}};
-        for my $gid (@gids)                              ## count different branches at the same level
+        for my $gid (@gids)                                       ## count different branches at the same level
         {
             my $total_cnt = $rh_sample_kinships->{NUM}->{$gid};   ## obtain the total samples in this branch level
-            
-            next if ($total_cnt == 1);
             
             $lvl_sum += $group_counts{$lvl}->{$gid};
             
             push @lvl_counts, "$gid:$group_counts{$lvl}->{$gid}/$total_cnt";
-            
-            ## test whether all samples in this branch-level is included
-            ## if so, discard the record at high branch-level
-            if (($group_counts{$lvl}->{$gid} == $total_cnt) && ($lvl_sum < $sample_num)
-                                                      && ($lvl > 0)) { 
-                pop @lvl_counts;
-                $lvl_sum -= $group_counts{$lvl}->{$gid};
-            }
-            
-            if (($lvl > 0) && ($lvl_sum < $sample_num) && (scalar @gids > 1)) {
-                $sample_dist += $total_cnt - $group_counts{$lvl}->{$gid};
-            }
         }
         
         next unless(@lvl_counts > 0);
         
         my $lvl_counts = join "\,", @lvl_counts;
         
-        push @out_grp_counts, "Lv" . ($lvl+1) . "($lvl_counts)";
+        push @grp_counts, "Lv" . ($lvl+1) . "($lvl_counts)";
         
-        
-        last if ($lvl_sum == $sample_num);  ## stop climbing down if all mutated samples are included
+        last if (($lvl_sum == $sample_num) && (@lvl_counts == 1));  ## stop climbing down if all mutated samples are collapsed to the most recent common level
     }
+
+    
+    my $sample_dist     = 0;
+    my @out_grp_counts  = ();
+    if (scalar @grp_counts > 1) {
+        ## calculate the sample distance as the samples missed before collapse to the most recent common level
+        my @mrc_groups = (split /\,/, $grp_counts[-2]);
+        
+        for my $cnt (@mrc_groups)
+        {
+            $cnt =~ /.*\:(\d+)\/(\d+)/;
+            $sample_dist += ($2 - $1);
+        }
+        
+        ## eliminate saturated level
+        for (my $i=0; $i+1<@grp_counts; $i++)
+        {
+            my $lost_cnt = 0;
+            my @groups   = (split /\,/, $grp_counts[$i]);
+            
+            for my $cnt (@groups)
+            {
+                $cnt =~ /.*\:(\d+)\/(\d+)/;
+                $lost_cnt += ($2 - $1);
+            }
+            
+            if ($lost_cnt > 0) {
+                push @out_grp_counts, $grp_counts[$i];
+            }
+        }
+    }
+    
+    push @out_grp_counts, $grp_counts[-1];
     
     my $out_grp_counts = join "\;", @out_grp_counts;
     
