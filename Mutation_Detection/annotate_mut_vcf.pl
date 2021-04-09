@@ -5,12 +5,14 @@
 #   Author: Nowind
 #   Created: 2012-02-21
 #   Updated: 2021-04-09
-#   Version: 2.0.1
+#   Version: 2.1.0
 #
 #   Change logs:
 #   Version 1.0.0 21/04/01: The initial version.
 #   Version 2.0.0 21/04/06: Change this script to a more flexible mutation confidence annotating script.
 #   Version 2.0.1 21/04/08: Fixed a bug when missing allele detail in some pre-exist variant sites.
+#   Version 2.0.2 21/04/09: Add support for threading when processig bam files.
+#   Version 2.1.0 21/04/09: Moved the bam processing to another script as it is too slow; change the inaccurate bam evidence to warn level.
 
 
 
@@ -25,7 +27,7 @@ use MyPerl::FileIO qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '2.0.1';
+my $VERSION = '2.1.0';
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
 
 my %annotates                    = ();
@@ -40,25 +42,18 @@ my %threshold                    = ();
    $threshold{max_sample_dist}   = -1;
 my @appendix_outputs             = ();
 my $min_supp_depth               = 5;
-my ($input, $output, $out_stats, $use_indel_tag, $samtools_opts);
+my ($input, $output, $out_stats, $use_indel_tag);
 GetOptions(
             "input=s"           => \$input,
             
             "trf=s"             => \$annotates{tandem_regions},
             "surround-indel=s"  => \$annotates{surround_indel},
             "preexist-var=s"    => \$annotates{pre_exist_vars},
-            "bam-list=s"        => \$annotates{bam_list},
+            "bam-supp=s"        => \$annotates{bam_support},
             "kinship=s"         => \$annotates{kinship},
             
             "output=s"          => \$output,
             "out-stats=s"       => \$out_stats,
-            
-            "samtools=s"        => \$samtools_opts,
-            
-            "no-both-clips"     => \$threshold{no_both_clips},
-            "max-clip-ratio=f"  => \$threshold{max_clip_ratio},
-            
-            "min-supp-depth=i"  => \$min_supp_depth,
             
             "use-indel-tag"     => \$use_indel_tag,
             
@@ -106,7 +101,7 @@ Options:
         "trf", "bam_support", "sets_combined", "pre-exist", "sample_distance"
 
 
-Options for INFO-based annotation
+Options for INFO-based annotations
     
     By default, this script output below annotations:
         (1) allele frequencies in "called mutated group (Shared)" and "uncalled
@@ -129,42 +124,14 @@ Options for INFO-based annotation
         fraction suggests higher calling bias [default: 0]
     
       
-Options for BAM-based annotation
+Options for other annotations
         
-        This script checks whether a mutation allele was supported by reliable
-        reads by excluding reads failed various thresholds here, multiple
-        thresholds will be applied together if specified
+    -b, --bam-supp <filename>
+        file contains info of supporting reads for mutation allele in the
+        format
+        "CHROM	POS	Sample_ids	Mut_allele	Status:Readcounts"
         
-        *Note: current version does not handle reads with indels well, so if
-        reads supporting the mutation alleles also contain indels, these reads
-        could be missed
-        
-    -b, --bam-list <filename>
-        check supporting reads of a mutation allele by looking back into bam
-        files, a list of bam files correspond to each sample id should be
-        given in the format:
-        "Sample_id BAM_file_location"
-        
-    -s, --samtools <string>
-        options passed to samtools view, e.g. "-f 4 -F 8", use this option to
-        remove reads that do not want to confirm the filters below, e.g.
-        unmapped/supplementary/secondary reads
 
-    --max-clip-ratio <float>
-        maximum ratio of soft/hard clipped length, calculated as
-        (soft-clipped-bases + hard-clipped-bases) / read_length
-        [default: 1 (i.e., no filtering)]
-    
-    -n, --no-both-clips  <string>
-        only filter reads with both ends clipped when exceeding
-        the --max-clip-ratio [default: no filtering]
-        
-    --min-supp-depth <int>
-        minimum requirement of realible supporting read-depth for each sample
-        [default: 5]
-
-        
-Options for other annotation
 
     --preexist-var  <filename>
         give a file of pre-existing variants, and check whether the mutation
@@ -257,9 +224,8 @@ Options for applying filters based on the confidence annotations
             mapping quality;
         (4) UG_misalign: variant only called by UnifideGenotyper in
             slippage/tandem region with nearby INDEL;
-        (5) clipped_only: mutation allele is only supported by clipped reads;
-        (6) pre_exist: mutation allele is found in pre-existing variants;
-        (7) unexpected_cooccur: mutation co-occurred preferentially in
+        (5) pre_exist: mutation allele is found in pre-existing variants;
+        (6) unexpected_cooccur: mutation co-occurred preferentially in
             non-closely related samples rather than closely related samples
         
     [WARN level]
@@ -279,7 +245,9 @@ Options for applying filters based on the confidence annotations
         (9) clustered: mutations clustered within a small range is suspect
             to mapping/calling artefacts especially with "high_mapq_only",
             require "Cluster" tag in FILTER field
-        
+        (10) lack_reliable_reads: mutation allele is only supported by
+            non-realible (e.g. clipped) reads;
+            
     --remove     <string>
         remove sites with number of fatal- and warn- level annotates
         exceed these numbers, given in the format
@@ -322,19 +290,19 @@ if ($output) {
     open (STDOUT, "> $output") || die $!;
 }
 
-## parse BAM files
-my %bam_files   = ();
-if ($annotates{bam_list}) {
-    print STDERR ">> Start parsing $annotates{bam_list} ... ";
+## parse BAM supportings
+my %bam_supports   = ();
+if ($annotates{bam_support}) {
+    print STDERR ">> Start parsing $annotates{bam_support} ... ";
     
-    my $bam_list_fh = getInputFilehandle($annotates{bam_list});
+    my $bam_list_fh = getInputFilehandle($annotates{bam_support});
     while (<$bam_list_fh>)
     {
         next if (/^\#/ || /^\s+$/); ## skip header and blank lines
         
-        my ($sample_id, $file_path) = (split /\s+/)[0,1];
+        my ($chrom, $pos, $sample_ids, $mut_allele, $supp_infos) = (split /\s+/);
         
-        $bam_files{$sample_id} = $file_path;
+        $bam_supports{$chrom}->{$pos} = $supp_infos;
     }
     
     print STDERR "done!\n";
@@ -432,8 +400,8 @@ if ($appendix_outputs{surround_indel}) {
 if ($appendix_outputs{trf}) {
     $out_header .= "\tTRF_predicts";
 }
-if ($annotates{bam_list} && $appendix_outputs{bam_support}) {
-    $out_header .= "\tBAM_non-clip_support";
+if ($annotates{bam_support} && $appendix_outputs{bam_support}) {
+    $out_header .= "\tBAM_supports";
 }
 if ($appendix_outputs{"pre-exist"}) {
     $out_header .= "\tPre-exist_alleles";
@@ -549,15 +517,6 @@ while (<$mut_fh>)
                 push @warn_annotates, "indel_nearby";
             }
         }
-        
-        ###if ($appendix_outputs{surround_indel}) {
-        ###    if ($surround_indel{$chrom}->{$pos}) {
-        ###        push @append_infos, $surround_indel{$chrom}->{$pos};
-        ###    }
-        ###    else {
-        ###        push @append_infos, "N/A";
-        ###    }
-        ###}
     }
     
     ## check for variant called in slippage/tandem region regions
@@ -639,28 +598,12 @@ while (<$mut_fh>)
 
     
     ## check for mapping status in BAM file
-    my $bam_support = '';
-    if ($annotates{bam_list}) {
-        my @s_reads_cnts = ();
-        my $reliable_cnt = 0;
-        for my $sample (@samples)
-        {
-            my $s_reads_cnt = count_support_reads($sample, $chrom, $pos, $mut_allele, \%bam_files, \%threshold);
-            push @s_reads_cnts, $s_reads_cnt;
-            
-            $reliable_cnt++ if $s_reads_cnt >= $min_supp_depth;
-        }
-        
-        my $s_reads_cnts = join "\;", @s_reads_cnts;
-        
-        my $state = ($reliable_cnt < 1) ? "POOR_SUPPORT" : "QUALIFIED_SUPPORT";
-        
-        $bam_support = "$state\:$s_reads_cnts";
-        ###print STDOUT "$chrom\t$pos\t$sample_ids\t$ref_allele\t$mut_allele\t$state\:$s_reads_cnts\n";
-        
-        if ($state eq "POOR_SUPPORT") {
+    if ($annotates{bam_support}) {
+        my $bam_support = $bam_supports{$chrom}->{$pos} ? $bam_supports{$chrom}->{$pos} : "N/A";
+
+        if ($bam_support =~ "POOR_SUPPORT") {
             if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
-                push @fatal_annotates, "clipped_only";
+                push @warn_annotates, "lack_reliable_reads";
             }
         }
         
@@ -805,85 +748,6 @@ print STDERR "# " . (scalar localtime()) . "\n";
 
 
 ######################### Sub #########################
-
-
-=head2 count_support_reads
-
-    About   : Count post-filtered reads which support the mutation allele.
-    Usage   : count_support_reads($sample, $chrom, $var_pos, $var_allele, $rh_bam_files, $rh_threshold, $ra_read_filters);
-    Args    : File in SAM format;
-              Prefix of output files.
-    Returns : Null
-
-=cut
-sub count_support_reads
-{
-    my ($sample, $chrom, $var_pos, $var_allele, $rh_bam_files, $rh_threshold) = @_;
-
-    my $pipe_str = "samtools view $rh_bam_files->{$sample} $chrom:$var_pos-$var_pos |";
-    
-    if ($samtools_opts) {
-        $pipe_str = "samtools view $samtools_opts $rh_bam_files->{$sample} $chrom:$var_pos-$var_pos |";
-    }
-    
-    my $supp_reads = 0;
-    
-    open (my $fh, $pipe_str) || die $!;
-    while (<$fh>)
-    {
-        next if (/^@/ || /^\s+$/); ## skip header
-        
-        chomp(my $record = $_);
-        
-        my ($QNAME, $FLAG, $RNAME, $POS, $MAPQ, $CIGAR, 
-            $MRNM, $NPOS, $TLEN, $SEQ, $QUAL, @OPT) = (split /\s+/, $record);
-        
-        
-        ## parse soft/hard clips in CIGAR string
-        ## original codes from: https://github.com/tseemann/samclip/blob/master/samclip
-        if (($rh_threshold->{max_clip_ratio} < 1) && ($CIGAR =~ /\d[SH]/)) {
-            my($HL, $SL, undef, $SR, $HR) = ($CIGAR =~ m/^(?:(\d+)H)?(?:(\d+)S)?(.*?)(?:(\d+)S)?(?:(\d+)H)?$/x);
-            
-            $HL ||= 0;
-            $SL ||= 0;
-            $SR ||= 0;
-            $HR ||= 0;
-            
-            my $clip_ratio = ($HL + $SL + $SR + $HR) / length($SEQ);
-            
-            if ($clip_ratio > $rh_threshold->{max_clip_ratio}) {           ## check if the read is overclipped
-                if ($threshold{no_both_clips}) {
-                    next if ((($HL + $SL) > 0) && (($SR + $HR) > 0));  ## check if the clips happen on both ends
-                }
-                else {
-                    next;
-                }
-            }
-        }
-        
-        ###print STDERR "$var_pos\t$RNAME\t$POS\n" if ($var_pos - $POS > length($SEQ));
-        if ($var_pos - $POS > length($SEQ)) { ## skip reads with preceding INDELs
-            next;
-        }
-        
-        ## test whether this read supports the mutation allele
-        my $bases = substr($SEQ, $var_pos - $POS, length($var_allele));
-        
-        ###my $flank = substr($SEQ, $var_pos - $POS-2, length($var_allele)+4);
-        ###print STDOUT "$sample\t$QNAME\t$RNAME\t$POS\t$flank\t$bases\t$var_allele\n";
-        
-        next unless($bases eq $var_allele);
-        
-        $supp_reads ++;
-        
-        ###next if ($rh_threshold->{min_insert_size} && abs($TLEN) < $rh_threshold->{min_insert_size});
-        ###next if ($rh_threshold->{max_insert_size} && abs($TLEN) > $rh_threshold->{max_insert_size});
-    }
-    
-    return $supp_reads;
-}
-
-
 
 
 =head2 get_group_info
