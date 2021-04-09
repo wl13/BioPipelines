@@ -4,7 +4,7 @@
 #
 #   Author: Nowind
 #   Created: 2012-02-21
-#   Updated: 2021-04-08
+#   Updated: 2021-04-09
 #   Version: 2.0.1
 #
 #   Change logs:
@@ -673,7 +673,9 @@ while (<$mut_fh>)
     ## check for pre-existing alleles
     if ($annotates{pre_exist_vars} && $pre_exist_vars{$chrom}->{$pos}->{depth}) {
         ## also confirm the reference allele in pre-existing alleles to make sure the "change" is the same
-        if ($pre_exist_vars{$chrom}->{$pos}->{depth}->{$ref_allele} > 0 &&
+        if ($pre_exist_vars{$chrom}->{$pos}->{depth}->{$ref_allele} &&
+            $pre_exist_vars{$chrom}->{$pos}->{depth}->{$mut_allele} &&
+            $pre_exist_vars{$chrom}->{$pos}->{depth}->{$ref_allele} > 0 &&
             $pre_exist_vars{$chrom}->{$pos}->{depth}->{$mut_allele} >= $threshold{max_pre_exist}) {
             if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
                 push @fatal_annotates, "pre_exist";
