@@ -4,7 +4,7 @@
 
 ### somatic-mutation-detection.md
 
-An adaption of previous pipeline to deal with somatic mutations
+Pipeline for somatic mutation calling
 
 <br />
 
@@ -80,8 +80,8 @@ An adaption of previous pipeline to deal with somatic mutations
 
 
 #### check_bam_supports.pl
-> This script checks whether a mutation allele was supported by reliable reads by excluding reads failed various thresholds, multiple thresholds will be applied together if specified
-> Note: current version does not handle reads with indels well, so if reads supporting the mutation alleles also contain indels, these reads could be missed
+> This script checks whether a mutation allele was supported by reliable reads by excluding reads failed various thresholds, multiple thresholds will be applied together if specified \
+> *Note: current version does not handle reads with indels well, so if reads supporting the mutation alleles also contain indels, these reads could be missed
 
 * **Options:**   
 
