@@ -1,12 +1,12 @@
-#!/usr/bin/perl -w
+#!/opt/nfs/bin/perl -w
 #
 #   sim_mutation_reads.pl -- Simulate reads with synthetic mutations use the method describled in Keightley et al. 2014, 2015.
 #
 #
 #   Author: Nowind
 #   Created: 2012-02-21
-#   Updated: 2016-07-18
-#   Version: 2.1.1
+#   Updated: 2019-07-12
+#   Version: 2.4.0
 #
 #   Change logs:
 #   Version 1.0.0 15/01/21: The initial version.
@@ -23,6 +23,12 @@
 #                                   fix various issues due to indels; remove test for nucleotide 
 #                                   consistent compared to reference allele.
 #   Version 2.1.1 16/07/18: Update: add option "--no-deletion"; now the deletions were not ignored by default.
+#   Version 2.2.0 16/09/30: Update: add option "--group-file" to simulate group-specific mutations.
+#   Version 2.2.1 17/01/11: Update: add option "--valid-depth" to output numbers of valid synthetic mutations.
+#   Version 2.2.2 17/01/13: Bug fixed: use no less than instead of greater in valid depth test.
+#   Version 2.3.0 19/07/09: Update: add options "--min-group-size" and "--max-group-size" to specify number of samples
+#                                   could share the simulated mutations within each group.
+#   Version 2.4.0 19/07/12: Update: add option "--use-filename".
 
 
 
@@ -41,7 +47,7 @@ use MyPerl::FileIO qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '2.1.1';
+my $VERSION = '2.4.0';
 my $HEADER  = "##$CMDLINE\n##Version: $VERSION\n";
 
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
@@ -54,6 +60,9 @@ my %options                  = ();
    $options{min_depth}       = 0;
    $options{max_frac_in_del} = 0.8;
    $options{skip_deletions}  = 0;
+   $options{valid_depth}     = 5;
+   $options{min_group_size}  = 1;
+   $options{max_group_size}  = -1;
 my ($no_rc, $use_rg_id,
     $samtools_opts, $min_seq_len, $max_clipping, $min_insert_size, $max_insert_size);
 GetOptions(
@@ -79,11 +88,19 @@ GetOptions(
             "no-ref-N"         => \$options{skip_ref_n_sites},
             "max-frac-del=f"   => \$options{max_frac_in_del},
             "no-deletion"      => \$options{skip_deletions},
+            
+            "group-file=s"     => \$options{group_file},
+            "min-group-size=i" => \$options{min_group_size},
+            "max-group-size=i" => \$options{max_group_size},
+            
+            "valid-depth=i"    => \$options{valid_depth},
+            
+            "use-filename"     => \$options{use_file_name},
            );
 
 my $show_help = ($CMDLINE =~ /\-help/) ? 0 : 1;
 
-unless($options{fasta_file} && $options{depth_file} && (@{$options{bam_files}} > 0) && $show_help ) {
+unless($options{fasta_file} && $options{depth_file} && (@{$options{bam_files}} > 0 || $options{group_file}) && $show_help ) {
     print <<EOF;
 
 $0  -- Extract all reads with the 
@@ -101,9 +118,20 @@ Input Options:
         input file contain empirical distribution of read depths, required
 
     -b, --bams        <filename>
-        bam file(s), at least one bam file should be specified
+        bam file(s), at least one bam file should be specified unless the
+        "--group-file" option is specified
 
+    -g, --group-file  <filename>
+        simulate group-specific mutations, e.g. mutations shared among samples
+        within a certain group, this file should contain the absolute path to
+        each bam file and the relevant group infos in the format:
+            
+            bam_file1 group1
+            bam_file2 group1
+            bam_file3 group2
+            ...
 
+    
 Output Options:
 
     -o, --output <filename>
@@ -111,13 +139,27 @@ Output Options:
         
     -n, --no-rc
         do not reverse complement sequence with negtive strand
-    -u, --use-rg
+    --use-rg
         add read group id to extracted records
-        
+    --use-filename
+        use filename as sample id instead of SM tag in SAM file, only the
+        string between "/" and the first "." of a filename would be used here
+
 Simulation Options:
     --random-size <int>
         number of mutations to be simulated, default: 100
 
+    --max-shared   <int>
+        set this option over 1 to simulate shared mutations different from
+        the "--group-file" option, where all samples would be chosen by random.
+        If "--group-file" option is specified, this option would be ignored.
+        [default: 1]
+        
+    --min-group-size <int>
+    --max-group-size <int>
+        Restrict the number of "mutated" samples within this range for each
+        group, default: [1, all members]
+    
     -s, --samtools <string>
         directly pass samtools view options to this script, e.g.
         "-f 4 -F 8"
@@ -133,10 +175,7 @@ Simulation Options:
     --max-insert   <int>
         screen out records with insert size wihtin this range
 
-    --max-shared   <int>
-        choose how many samples could shared the mutation loci, the samples
-        were also choosed by random [default: 1]
-
+        
     -e, --exclude  <strings>
         exclude unwanted chromosomes or scaffolds while simulating, all
         chromosomes with ids match strings specified here would be ignored 
@@ -146,7 +185,11 @@ Simulation Options:
         than this threshold would be set to this threshold. This option would
         also cause those loci where no mutated reads were successful generated
         to be skipped [default: 0]
-        
+    
+    --valid-depth  <int>
+        add a LowDepth tag to sites where no sample meet this depth threshold,
+        [default: 5]
+    
     --no-ref-N
         do not generate mutations in reference N sites
         
@@ -178,6 +221,10 @@ print STDERR "# $0 v$VERSION\n# " . (scalar localtime()) . "\n";
 
 if ($options{output}) {
     open (STDOUT, "> $options{output}") || die $!;
+}
+
+if ($options{max_shared} > scalar @{$options{bam_files}}) {
+    $options{max_shared} = scalar @{$options{bam_files}};
 }
 
 
@@ -225,6 +272,16 @@ for my $chrom (@CHROM_IDs)
 print STDERR "done!\n";
 
 
+##
+## read group infos
+##
+my %group_infos = ();
+if ($options{group_file}) {
+    get_group_info($options{group_file}, \%group_infos);
+}
+
+my @group_ids = sort keys %group_infos;
+
 
 ##
 ## randomly generate mutation loci
@@ -233,7 +290,7 @@ print STDERR ">> Start generating simulated reads ... ";
 print STDOUT "$HEADER##" . (scalar localtime()) . "\n";
 print STDOUT "##Tag(SAM): replaced reads\n";
 print STDOUT "##Tag(MUT): simulated loci\n";
-print STDOUT "#Tag\tChrom\tStart\tEnd\tSamples\tRef\tMut\tSimulated_depths(Non_Replaced,Replaced)\n";
+print STDOUT "#Tag\tChrom\tStart\tEnd\tSamples\tRef\tMut\tSimulated_depths(Non_Replaced,Replaced)\tSamples_Count(All,Depth>=$options{valid_depth})\n";
 my $rand_index = 1;
 while ($rand_index <= $options{rand_size})
 {
@@ -249,10 +306,41 @@ while ($rand_index <= $options{rand_size})
     my @alt_bases  = grep { $_ ne $ref_base } qw(A T G C);
     my $mut_base   = $alt_bases[int(rand(3))];
 
-    my @samples_selected = rand_set(set => $options{bam_files}, min => 1, max => $options{max_shared});
-       
-    my @sim_samples = ();
-    my @sim_depths  = ();
+    my @samples_selected = ();
+    
+    ##
+    ## generate group-specific mutations
+    ##
+    if ($options{group_file}) {
+        my @group_selected   = rand_set(set => \@group_ids, size => 1);
+        
+        my $max_group_size = scalar @{$group_infos{$group_selected[0]}};
+        
+        if ($options{max_group_size} >= $options{min_group_size}) {
+            $max_group_size = $options{max_group_size};
+        }
+        
+        if ($max_group_size > scalar @{$group_infos{$group_selected[0]}}) {
+            $max_group_size = scalar @{$group_infos{$group_selected[0]}};
+        }
+        
+        if ($max_group_size > $options{min_group_size}) {
+            @samples_selected = rand_set(set => $group_infos{$group_selected[0]},
+                                        min => $options{min_group_size},
+                                        max => $max_group_size);
+        }
+        else {
+            @samples_selected = rand_set(set => $group_infos{$group_selected[0]}, size => $max_group_size);
+        }
+
+    }
+    else {
+        @samples_selected = rand_set(set => $options{bam_files}, min => 1, max => $options{max_shared});
+    }
+    
+    my @sim_samples     = ();
+    my @sim_depths      = ();
+    my @replaced_depths = ();
     for my $bam_file (@samples_selected)
     {
         my $sim_info = gen_mutated_reads($bam_file, $chrom, $pos, $ref_base, $mut_base, $rh_emp_depths);
@@ -262,8 +350,14 @@ while ($rand_index <= $options{rand_size})
             
             push @sim_samples, $sample;
             push @sim_depths,  $depth;
+            
+            my $replaced_depth = (split /\,/, $depth)[1];
+            push @replaced_depths, $replaced_depth;
         }
     }
+    
+    my $total_samples = scalar @sim_depths;
+    my $valid_replace = grep {$_ >= $options{valid_depth}} @replaced_depths;
     
     if (@sim_samples >= 1) {
         $rand_index ++;
@@ -277,7 +371,7 @@ while ($rand_index <= $options{rand_size})
         my $mut_samples = join ";", @sorted_samples;
         my $mut_depths  = join ";", @sorted_depths;
         
-        print STDOUT "MUT\t$chrom\t$pos\t$pos\t$mut_samples\t$ref_base\t$mut_base\t$mut_depths\n";
+        print STDOUT "MUT\t$chrom\t$pos\t$pos\t$mut_samples\t$ref_base\t$mut_base\t$mut_depths\t$total_samples,$valid_replace\n";
     }
 }
 print STDERR "\tdone!\n";
@@ -287,6 +381,29 @@ print STDERR "\tdone!\n";
 print STDERR "# " . (scalar localtime()) . "\n";
 
 ######################### Sub #########################
+
+=head2 get_group_info
+
+    About   : Get group infos of each sample
+    Usage   : get_group_info($group_file);
+    Args    : File contain group infos
+    Returns : Null
+
+=cut
+sub get_group_info
+{
+    my ($in, $rh_group_infos) = @_;
+    
+    my $fh = getInputFilehandle($in);
+    while (<$fh>)
+    {
+        next if (/\#/ || /^\s+$/);
+        
+        my ($sample_file, $group_id) = (split /\s+/);
+        
+        push @{$rh_group_infos->{$group_id}}, $sample_file;
+    }
+}
 
 
 =head2 get_empirical_dist
@@ -349,6 +466,12 @@ sub gen_mutated_reads
         last;
     }
     close $header_fh;
+    
+    if ($options{use_file_name}) {
+        $mut_sample = $in;
+        $mut_sample =~ s/.*\///;
+        $mut_sample =~ s/\..*//;
+    }
     
     if ($mut_sample eq '') {
         print STDERR "Error: No SM tag found in bam header!\n"; exit(2);
