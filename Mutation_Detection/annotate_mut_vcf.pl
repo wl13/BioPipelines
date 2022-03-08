@@ -4,8 +4,8 @@
 #
 #   Author: Nowind
 #   Created: 2012-02-21
-#   Updated: 2021-04-09
-#   Version: 2.1.1
+#   Updated: 2021-11-06
+#   Version: 2.2.0
 #
 #   Change logs:
 #   Version 1.0.0 21/04/01: The initial version.
@@ -15,6 +15,7 @@
 #   Version 2.1.0 21/04/09: Moved the bam processing to another script as it is too slow; change the inaccurate
 #                           bam evidence to warn level.
 #   Version 2.1.1 21/04/09: Revised the approach to estimate the sample distance.
+#   Version 2.2.0 21/11/06: Add options to test co-exist variants.
 
 
 use strict;
@@ -28,7 +29,7 @@ use MyPerl::FileIO qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '2.1.1';
+my $VERSION = '2.2.0';
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
 
 my %annotates                    = ();
@@ -52,6 +53,7 @@ GetOptions(
             "preexist-var=s"    => \$annotates{pre_exist_vars},
             "bam-supp=s"        => \$annotates{bam_support},
             "kinship=s"         => \$annotates{kinship},
+            "coexist-vars=s"    => \$annotates{co_exist_vars},
             
             "output=s"          => \$output,
             "out-stats=s"       => \$out_stats,
@@ -59,6 +61,7 @@ GetOptions(
             "use-indel-tag"     => \$use_indel_tag,
             
             "max-pre-exist=i"   => \$threshold{max_pre_exist},
+            "min-co-exist=i"    => \$threshold{min_co_exist},
             "min-var-score=f"   => \$threshold{min_var_score},
             "min-call-frac=f"   => \$threshold{min_called_frac},
             "max-sample-dist=i" => \$threshold{max_sample_dist},
@@ -154,6 +157,27 @@ Options for other annotations
         with read-depth over this value will be considered as "pre-existing"
         [default: 5]
 
+
+    --coexist-vars <filename>
+        give a file of co-existing variants, and check whether the mutation
+        allele is truly present there, the basic format for this file is
+        
+        #CHROM  POS     Overall_Allele_Depth
+        Pp01    139282  [GT]:5320,[G]:478
+        Pp01    179607  [CCT]:3749,[C]:218
+        Pp01    185182  [CAT]:1813,[C]:74
+        ...
+        
+        The numbers in third low, e.g., "[GT]:5320,[G]:478" stand for the
+        read-depths of each allele, the reference allele (or pre-mutated
+        allele) should also be present here
+        
+    --min-co-exist <int>
+        check whether the mutation allele is identical to the co-existed
+        variants provided in the appendix row, identical allele in appendix row
+        with read-depth below this value will NOT be considered as "co-exist"
+        [default: 5]
+        
         
     --trf            <filename>
         a file contains the slippage information of each mutation predicted
@@ -228,6 +252,8 @@ Options for applying filters based on the confidence annotations
         (5) pre_exist: mutation allele is found in pre-existing variants;
         (6) unexpected_cooccur: mutation co-occurred preferentially in
             non-closely related samples rather than closely related samples
+        (7) lack_co_exist: mutation allele is absent in external samples
+            where it is expected to be present
         
     [WARN level]
         (1) anomalous_reads_only: mutation is only seen when calling with
@@ -339,7 +365,37 @@ if ($annotates{pre_exist_vars}) {
 
 
 
-## parse pre-existing variants
+## parse co-existing variants
+my %co_exist_vars = ();
+if ($annotates{co_exist_vars}) {
+    print STDERR ">> Start parsing $annotates{co_exist_vars} ... ";
+    
+    my $co_exist_fh = getInputFilehandle($annotates{co_exist_vars});
+    while (<$co_exist_fh>)
+    {
+        next if (/^\#/ || /^\s+$/); ## skip header and blank lines
+        
+        my ($chrom, $pos, $allele_details) = (split /\s+/);
+        
+        next unless ($allele_details =~ /\:/);
+        
+        $co_exist_vars{$chrom}->{$pos}->{info} = $allele_details;
+        
+        my @cmp_alleles = (split /\,/, $allele_details); ## parsing pre-existing alleles such as [G]:4123,[A]:1741
+        
+        for (@cmp_alleles)
+        {
+            $_ =~ /\[(\w+)\]\:(\d+)/;
+            $co_exist_vars{$chrom}->{$pos}->{depth}->{$1} = $2;
+        }
+    }
+    
+    print STDERR "done!\n";
+}
+
+
+
+## parse tandem repeats
 my %trf_infos = ();
 if ($annotates{tandem_regions}) {
     print STDERR ">> Start parsing $annotates{tandem_regions} ... ";
@@ -407,6 +463,9 @@ if ($annotates{bam_support} && $appendix_outputs{bam_support}) {
 if ($appendix_outputs{"pre-exist"}) {
     $out_header .= "\tPre-exist_alleles";
 }
+if ($appendix_outputs{"lack-co-exist"}) {
+    $out_header .= "\tCo-exist_alleles";
+}
 if ($appendix_outputs{sample_distance}) {
     $out_header .= "\tSample_relatedness";
 }
@@ -464,12 +523,12 @@ while (<$mut_fh>)
     
     ## check for clustered mutations
     if ($filter =~ /Cluster/) {
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{clustered} || $set_rules{clustered}->{$user_set}) {
             push @warn_annotates, "clustered";
         }
     }
 
-    
+    ###print STDERR Dumper(%set_rules); exit;
     
     my $called_fq = ($info =~ /Shared\=(\d+)/)      ? $1 : 1;   ## number of samples called with the mutation allele
     my $GRPS_fqs  = ($info =~ /GRPFQ\=(.*?)(\;|$)/) ? $1 : 0;   ## number of samples have too few reads supporting the mutation allele
@@ -489,7 +548,7 @@ while (<$mut_fh>)
 
     if ($mut_type eq "REF") {
         ## a reference allele is often treated as a common allele
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{ref_allele} || $set_rules{ref_allele}->{$user_set}) {
             push @fatal_annotates, "ref_allele";
         }
     }
@@ -504,7 +563,7 @@ while (<$mut_fh>)
     
     if ($caller_src ne "UG_Single+HC_GVCF") {
         ## variant only called by a single caller
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{caller_bias} || $set_rules{caller_bias}->{$user_set}) {
             push @warn_annotates, "caller_bias";
         }
     }
@@ -514,7 +573,7 @@ while (<$mut_fh>)
     ## check for SNV mutations with surrounding indels
     if ($annotates{surround_indel}) {
         if ($surround_indel{$chrom}->{$pos} && ($surround_indel{$chrom}->{$pos} eq "YES")) {
-            if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+            if (!$threshold{applied_sets} || !$set_rules{indel_nearby} || $set_rules{indel_nearby}->{$user_set}) {
                 push @warn_annotates, "indel_nearby";
             }
         }
@@ -523,7 +582,7 @@ while (<$mut_fh>)
     ## check for variant called in slippage/tandem region regions
     if ($annotates{tandem_regions}) {
         ###if ($trf_infos{$chrom}->{$pos}) {
-        ###    if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        ###    if (!$threshold{applied_sets} || !$set_rules{slippage} || $set_rules{slippage}->{$user_set}) {
         ###        push @warn_annotates, "slippage";
         ###    }
         ###}
@@ -540,7 +599,7 @@ while (<$mut_fh>)
     
     if (($caller_src eq "UG_Single") && ($trf_infos{$chrom}->{$pos}) && $surround_indel{$chrom}->{$pos}) {
         ## variant only called by UnifideGenotyper has higher false positive rate around INDELs/slippage regions
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{UG_misalign} || $set_rules{UG_misalign}->{$user_set}) {
             push @fatal_annotates, "UG_misalign";
         }
     }
@@ -548,7 +607,7 @@ while (<$mut_fh>)
     
     ## check varaint score
     if ($qual < $threshold{min_var_score}) {
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{low_qual} || $set_rules{low_qual}->{$user_set}) {
             push @warn_annotates, "low_qual";
         }
     }
@@ -556,13 +615,13 @@ while (<$mut_fh>)
     ## check for anomalous reads
     if ($info =~ /Combine=AR(\;|$)/) {
         ## mutation is only seen when calling with the anomalous mapped reads, indicating the mutation allele is supporting by anomalous reads only
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{anomalous_reads_only} || $set_rules{anomalous_reads_only}->{$user_set}) {
             push @warn_annotates, "anomalous_reads_only";
         }
     }
     if ($info =~ /Combine=NAR(\;|$)/) {
         ## mutation is only seen when calling without anomalous mapped reads, indicating a putative false-positive call
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{proper_reads_only} || $set_rules{proper_reads_only}->{$user_set}) {
             push @fatal_annotates, "proper_reads_only";
         }
     }
@@ -570,13 +629,13 @@ while (<$mut_fh>)
     ## check for low-quality mapping
     if ($info =~ /Combine=MQ0(\;|$)/) {
         ## mutation is only seen when calling with the low MAPQ reads, indicating the mutation allele is supporting by reads with low MAPQ only
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{low_mapq_only} || $set_rules{low_mapq_only}->{$user_set}) {
             push @warn_annotates, "low_mapq_only";
         }
     }
     if ($info =~ /Combine=MQ20(\;|$)/) {
         ## mutation is only seen when calling with high MAPQ (>=20) reads, indicating a putative false-positive call
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{high_mapq_only} || $set_rules{high_mapq_only}->{$user_set}) {
             push @fatal_annotates, "high_mapq_only";
         }
     }
@@ -584,7 +643,7 @@ while (<$mut_fh>)
     ## check for missing rate
     if ($info !~ /NMISS=0/) {
         ## if there is any sample missing, then mark it
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{missing_calls} || $set_rules{missing_calls}->{$user_set}) {
             push @warn_annotates, "missing_calls";
         }
     }
@@ -592,7 +651,7 @@ while (<$mut_fh>)
     ## check for unexpected cooccurence
     if (($info !~ /FPD=0/) && ($info !~ /FPD=1;FPFQ=1(\;|$)/)) {
         ## if over one "mutated-reads" seen in unexpected group, then mark it
-        if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+        if (!$threshold{applied_sets} || !$set_rules{unexpected_presence} || $set_rules{unexpected_presence}->{$user_set}) {
             push @warn_annotates, "unexpected_presence";
         }
     }
@@ -603,7 +662,7 @@ while (<$mut_fh>)
         my $bam_support = $bam_supports{$chrom}->{$pos} ? $bam_supports{$chrom}->{$pos} : "N/A";
 
         if ($bam_support =~ "POOR_SUPPORT") {
-            if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+            if (!$threshold{applied_sets} || !$set_rules{lack_reliable_reads} || $set_rules{lack_reliable_reads}->{$user_set}) {
                 push @warn_annotates, "lack_reliable_reads";
             }
         }
@@ -621,7 +680,7 @@ while (<$mut_fh>)
             $pre_exist_vars{$chrom}->{$pos}->{depth}->{$mut_allele} &&
             $pre_exist_vars{$chrom}->{$pos}->{depth}->{$ref_allele} > 0 &&
             $pre_exist_vars{$chrom}->{$pos}->{depth}->{$mut_allele} >= $threshold{max_pre_exist}) {
-            if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+            if (!$threshold{applied_sets} || !$set_rules{pre_exist} || $set_rules{pre_exist}->{$user_set}) {
                 push @fatal_annotates, "pre_exist";
             }
         }
@@ -635,6 +694,33 @@ while (<$mut_fh>)
             push @append_infos, "N/A";
         }
     }
+    
+    
+    ## check for co-existing alleles
+    if ($annotates{co_exist_vars}) {
+        if ($co_exist_vars{$chrom}->{$pos}->{depth} &&
+            $co_exist_vars{$chrom}->{$pos}->{depth}->{$ref_allele} &&
+            $co_exist_vars{$chrom}->{$pos}->{depth}->{$mut_allele} &&
+            $co_exist_vars{$chrom}->{$pos}->{depth}->{$ref_allele} > 0 &&
+            $co_exist_vars{$chrom}->{$pos}->{depth}->{$mut_allele} >= $threshold{min_co_exist}) {
+        }
+        else {
+            if (!$threshold{applied_sets} || !$set_rules{lack_co_exist} || $set_rules{lack_co_exist}->{$user_set}) {
+                push @fatal_annotates, "lack_co_exist";
+            }
+        }
+    }
+    
+    if ($appendix_outputs{"lack-co-exist"}) {
+        if ($co_exist_vars{$chrom}->{$pos}->{info}) {
+            push @append_infos, $co_exist_vars{$chrom}->{$pos}->{info};
+        }
+        else {
+            push @append_infos, "N/A";
+        }
+    }
+    
+    
     
     ## check for non-proper co-occurence of mutations
     if ($annotates{kinship}) {  ## hierarchic group counts
@@ -655,7 +741,7 @@ while (<$mut_fh>)
         }
         
         if ($threshold{max_sample_dist} >= 0 && $sample_dist > $threshold{max_sample_dist}) {
-            if (!$threshold{applied_sets} || !$set_rules{biased_scall} || $set_rules{biased_scall}->{$user_set}) {
+            if (!$threshold{applied_sets} || !$set_rules{unexpected_cooccur} || $set_rules{unexpected_cooccur}->{$user_set}) {
                 push @fatal_annotates, "unexpected_cooccur";
             }
         }

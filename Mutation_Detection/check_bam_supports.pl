@@ -4,12 +4,13 @@
 #
 #   Author: Nowind
 #   Created: 2012-02-21
-#   Updated: 2021-04-09
-#   Version: 1.0.1
+#   Updated: 2021-12-26
+#   Version: 1.1.0
 #
 #   Change logs:
 #   Version 1.0.0 21/04/01: The initial version.
 #   Version 1.0.1 21/04/09: A few updates on input and output.
+#   Version 1.1.0 21/12/26: Add support for multiple bam files per sample.
 
 
 
@@ -24,7 +25,7 @@ use MyPerl::FileIO qw(:all);
 
 
 my $CMDLINE = "perl $0 @ARGV";
-my $VERSION = '1.0.1';
+my $VERSION = '1.1.0';
 my $HEADER  = "##$CMDLINE\n##Version: $VERSION\n";
 
 my $SOURCE  = (scalar localtime()) . " Version: $VERSION";
@@ -128,7 +129,7 @@ while (<$bam_list_fh>)
     
     my ($sample_id, $file_path) = (split /\s+/)[0,1];
     
-    $bam_files{$sample_id} = $file_path;
+    push @{$bam_files{$sample_id}}, $file_path;
 }
 print STDERR "done!\n";
 
@@ -155,9 +156,13 @@ while (<$mut_fh>)
     my $reliable_cnt = 0;
     for my $sample (@samples)
     {
-        my $s_reads_cnt = count_support_reads($sample, $chrom, $pos, $mut_allele, \%bam_files, \%threshold);
-        push @s_reads_cnts, $s_reads_cnt;
+        my $s_reads_cnt = 0;
+        for my $sbam_file (@{$bam_files{$sample}})
+        {
+            $s_reads_cnt += count_support_reads($sample, $chrom, $pos, $mut_allele, $sbam_file, \%threshold);
+        }
         
+        push @s_reads_cnts, $s_reads_cnt;
         $reliable_cnt++ if $s_reads_cnt >= $min_supp_depth;
     }
     
@@ -180,7 +185,7 @@ print STDERR "# " . (scalar localtime()) . "\n";
 =head2 count_support_reads
 
     About   : Count post-filtered reads which support the mutation allele.
-    Usage   : count_support_reads($sample, $chrom, $var_pos, $var_allele, $rh_bam_files, $rh_threshold, $ra_read_filters);
+    Usage   : count_support_reads($sample, $chrom, $var_pos, $var_allele, $bam_file, $rh_threshold, $ra_read_filters);
     Args    : File in SAM format;
               Prefix of output files.
     Returns : Null
@@ -188,12 +193,12 @@ print STDERR "# " . (scalar localtime()) . "\n";
 =cut
 sub count_support_reads
 {
-    my ($sample, $chrom, $var_pos, $var_allele, $rh_bam_files, $rh_threshold) = @_;
+    my ($sample, $chrom, $var_pos, $var_allele, $bam_file, $rh_threshold) = @_;
 
-    my $pipe_str = "samtools view $rh_bam_files->{$sample} $chrom:$var_pos-$var_pos |";
+    my $pipe_str = "samtools view $bam_file $chrom:$var_pos-$var_pos |";
     
     if ($samtools_opts) {
-        $pipe_str = "samtools view $samtools_opts $rh_bam_files->{$sample} $chrom:$var_pos-$var_pos |";
+        $pipe_str = "samtools view $samtools_opts $bam_file $chrom:$var_pos-$var_pos |";
     }
     
     my $supp_reads = 0;
